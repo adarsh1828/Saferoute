@@ -18,16 +18,20 @@ const JWT_SECRET = process.env.JWT_SECRET || 'saferoute_sih_secret_key_2026';
 const TURSO_URL = process.env.TURSO_DATABASE_URL || 'libsql://saferoute-adarsh1828.aws-ap-south-1.turso.io';
 const TURSO_AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN || '';
 
-// Ensure upload & data directories exist
-const uploadDir = path.join(__dirname, 'uploads');
+// Ensure upload & data directories exist (handles read-only filesystem on Vercel)
+const isVercel = Boolean(process.env.VERCEL);
+const baseDir = isVercel ? '/tmp' : __dirname;
+const uploadDir = path.join(baseDir, 'uploads');
 const photosDir = path.join(uploadDir, 'photos');
 const videosDir = path.join(uploadDir, 'videos');
-const dataDir = path.join(__dirname, 'data');
+const dataDir = path.join(baseDir, 'data');
 
 [uploadDir, photosDir, videosDir, dataDir].forEach((dir) => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+  try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  } catch (_) {}
 });
 
 /* ════════════════════════════════════════════
@@ -1037,13 +1041,18 @@ function getLocalNetworkIp() {
   return 'localhost';
 }
 
-// Start Server
-app.listen(PORT, '0.0.0.0', () => {
-  const localIp = getLocalNetworkIp();
-  console.log(`\n======================================================`);
-  console.log(`🛡️  SafeRoute Unified Turso Server is LIVE!`);
-  console.log(`💻 Laptop Browser:  http://localhost:${PORT}`);
-  console.log(`📱 Mobile Browser:  http://${localIp}:${PORT}`);
-  console.log(`🌐 Turso Cloud URL: ${TURSO_URL}`);
-  console.log(`======================================================\n`);
-});
+// Start Server (only when running as standalone Node server, not on Vercel)
+if (!process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    const localIp = getLocalNetworkIp();
+    console.log(`\n======================================================`);
+    console.log(`🛡️  SafeRoute Unified Turso Server is LIVE!`);
+    console.log(`💻 Laptop Browser:  http://localhost:${PORT}`);
+    console.log(`📱 Mobile Browser:  http://${localIp}:${PORT}`);
+    console.log(`🌐 Turso Cloud URL: ${TURSO_URL}`);
+    console.log(`======================================================\n`);
+  });
+}
+
+// Export Express app for Vercel Serverless Functions
+module.exports = app;
