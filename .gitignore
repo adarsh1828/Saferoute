@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Environment Variables & Secrets
+.env
+.env.local
+
+# Evidence Uploads
+uploads/videos/*
+uploads/photos/*
+!uploads/videos/.gitkeep
+!uploads/photos/.gitkeep
+
+# Local data & logs
+data/
+*.log
+npm-debug.log*
+
+# OS Files
+.DS_Store
+Thumbs.db

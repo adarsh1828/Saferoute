@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>SafeRoute – Women's Safety & Emergency Assistance</title>
+  <meta name="description" content="SafeRoute: Women's Safety & Emergency Assistance System" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ══════════════ TOAST CONTAINER ══════════════ -->
+  <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- ══════════════ MODAL OVERLAY ══════════════ -->
+  <div id="modal-overlay" class="hidden" role="dialog" aria-modal="true">
+    <div id="modal-box">
+      <h3 id="modal-title"></h3>
+      <p id="modal-body"></p>
+      <div id="modal-actions"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════ FAKE CALL OVERLAY ══════════════ -->
+  <div id="fake-call-overlay" class="hidden fake-call-screen" role="dialog" aria-modal="true">
+    <!-- Incoming Call State -->
+    <div id="fc-incoming" class="fc-container">
+      <div class="fc-caller-info">
+        <div class="fc-avatar" id="fc-avatar">👩</div>
+        <h2 class="fc-caller-name" id="fc-caller-name">Maa (Mom)</h2>
+        <p class="fc-caller-num" id="fc-caller-num">+91 98765 43210</p>
+        <p class="fc-call-status">Incoming Call…</p>
+      </div>
+      <div class="fc-actions-incoming">
+        <button class="fc-btn fc-decline" onclick="endFakeCall()" aria-label="Decline">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6-6 19.8 19.8 0 0 1-3.12-8.68A2 2 0 0 1 3 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7 9.91"/></svg>
+          <span>Decline</span>
+        </button>
+        <button class="fc-btn fc-accept" onclick="acceptFakeCall()" aria-label="Accept">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          <span>Accept</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Active Call State -->
+    <div id="fc-active" class="fc-container hidden">
+      <div class="fc-caller-info">
+        <div class="fc-avatar-small" id="fc-active-avatar">👩</div>
+        <h2 class="fc-caller-name" id="fc-active-name">Maa (Mom)</h2>
+        <p class="fc-timer" id="fc-call-timer">00:00</p>
+        <p class="fc-speech-text" id="fc-speech-indicator">🔊 "Beta, where are you? Reach home soon!"</p>
+      </div>
+      <div class="fc-keypad-mock">
+        <div class="fc-dial-btn"><span>🔇</span><small>Mute</small></div>
+        <div class="fc-dial-btn"><span>🔢</span><small>Keypad</small></div>
+        <div class="fc-dial-btn active"><span>🔊</span><small>Speaker</small></div>
+      </div>
+      <div class="fc-actions-active">
+        <button class="fc-btn fc-decline" style="width:72px; height:72px; margin:0 auto;" onclick="endFakeCall()" aria-label="End Call">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6-6 19.8 19.8 0 0 1-3.12-8.68A2 2 0 0 1 3 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7 9.91"/></svg>
+          <span>End</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ PANIC SIREN & STROBE OVERLAY ══════════════ -->
+  <div id="siren-overlay" class="hidden siren-strobe-screen" role="dialog" aria-modal="true">
+    <div class="siren-content">
+      <div class="siren-flashing-icon">🚨</div>
+      <h1 class="siren-title">EMERGENCY SIREN ACTIVE</h1>
+      <p class="siren-subtitle">High-decibel alarm sounding & emergency strobe flashing</p>
+      <div class="siren-decibel-meter">
+        <span>🔊 Max Volume Alert</span>
+      </div>
+      <button class="btn btn-white-danger btn-full" onclick="stopPanicSiren()">
+        🛑 STOP SIREN &amp; STROBE
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════════ STEALTH CALCULATOR OVERLAY ══════════════ -->
+  <div id="calculator-overlay" class="hidden calc-screen" role="dialog" aria-modal="true">
+    <div class="calc-top-bar">
+      <span class="calc-brand" onclick="exitCalculatorMode()" title="Tap to exit">Calculator · <small style="color:#a1a1aa">Tap to exit</small></span>
+      <button class="calc-exit-btn" onclick="exitCalculatorMode()" aria-label="Exit">✕</button>
+    </div>
+    <div class="calc-display-wrap">
+      <div class="calc-history" id="calc-history"></div>
+      <div class="calc-display" id="calc-display">0</div>
+    </div>
+    <div class="calc-keypad">
+      <button class="calc-btn fn" onclick="calcInput('C')">C</button>
+      <button class="calc-btn fn" onclick="calcInput('+/-')">±</button>
+      <button class="calc-btn fn" onclick="calcInput('%')">%</button>
+      <button class="calc-btn op" onclick="calcInput('/')">÷</button>
+
+      <button class="calc-btn num" onclick="calcInput('7')">7</button>
+      <button class="calc-btn num" onclick="calcInput('8')">8</button>
+      <button class="calc-btn num" onclick="calcInput('9')">9</button>
+      <button class="calc-btn op" onclick="calcInput('*')">×</button>
+
+      <button class="calc-btn num" onclick="calcInput('4')">4</button>
+      <button class="calc-btn num" onclick="calcInput('5')">5</button>
+      <button class="calc-btn num" onclick="calcInput('6')">6</button>
+      <button class="calc-btn op" onclick="calcInput('-')">−</button>
+
+      <button class="calc-btn num" onclick="calcInput('1')">1</button>
+      <button class="calc-btn num" onclick="calcInput('2')">2</button>
+      <button class="calc-btn num" onclick="calcInput('3')">3</button>
+      <button class="calc-btn op" onclick="calcInput('+')">+</button>
+
+      <button class="calc-btn num zero" onclick="calcInput('0')">0</button>
+      <button class="calc-btn num" onclick="calcInput('.')">.</button>
+      <button class="calc-btn op" onclick="calcInput('=')">=</button>
+    </div>
+    <div class="calc-covert-hint">
+      <small>🔒 Camouflage Active · Enter <strong>911=</strong> or <strong>100=</strong> for Covert SOS</small>
+    </div>
+  </div>
+
+  <!-- ══════════════ APP SHELL ══════════════ -->
+  <div id="app">
+
+    <!-- ── AUTH SCREEN ── -->
+    <section id="screen-auth" class="screen active">
+      <div class="auth-wrapper">
+        <div class="auth-brand-col">
+          <!-- Cyber Hero Showcase Banner -->
+          <div class="cyber-hero-banner">
+            <div class="cyber-auth-lock-holo">
+              <div class="cal-ring-spin"></div>
+              <div class="cal-core-lock">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  <circle cx="12" cy="16" r="1.5" fill="currentColor"/>
+                </svg>
+              </div>
+            </div>
+            <div class="cyber-live-tag">
+              <span class="cyber-pulse-dot"></span> NEURAL CYBER-SHIELD ONLINE
+            </div>
+          </div>
+
+          <div class="auth-brand cyber-brand">
+            <div class="cyber-brand-badge">SMART INDIA HACKATHON 2026</div>
+            <h1 class="brand-name cyber-title">SAFEROUTE</h1>
+            <p class="brand-tagline cyber-tagline">Quantum AI Safety &amp; Emergency Shield for Women</p>
+            <div class="desktop-auth-features">
+              <div class="daf-item"><span>🛡️</span> Zero-Lag 1-Tap SOS Emergency Broadcast</div>
+              <div class="daf-item"><span>🛰️</span> Real-time Live GPS Coordinates &amp; Safe Havens</div>
+              <div class="daf-item"><span>🍃</span> Multi-channel MongoDB &amp; Cellular SMS Sync</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="auth-form-col">
+          <!-- Tab switcher -->
+          <div class="auth-tabs" role="tablist">
+            <button class="auth-tab active" id="tab-login" role="tab" aria-selected="true"
+                    onclick="switchAuthTab('login')">⚡ LOGIN</button>
+            <button class="auth-tab" id="tab-register" role="tab" aria-selected="false"
+                    onclick="switchAuthTab('register')">🛡️ REGISTER</button>
+          </div>
+
+          <!-- LOGIN FORM -->
+          <form id="form-login" class="auth-form" novalidate onsubmit="handleLogin(event)">
+            <div class="field-group">
+              <label for="login-email"><span>📧</span> Email / Username</label>
+              <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email" />
+            </div>
+            <div class="field-group">
+              <label for="login-pass"><span>🔑</span> Security Password</label>
+              <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password" />
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">AUTHENTICATE &amp; ENTER</button>
+            <button type="button" class="btn btn-cyber-bypass btn-full" onclick="loginDemo()">
+              ⚡ Instant Neural Demo Access (Ananya)
+            </button>
+            <p class="auth-hint" style="color:#94a3b8;">Forgot credentials? <span class="link" style="color:#f472b6;" onclick="showForgotModal()">Reset Access</span></p>
+          </form>
+
+          <!-- REGISTER FORM -->
+          <form id="form-register" class="auth-form hidden" novalidate onsubmit="handleRegister(event)">
+            <div class="field-group">
+              <label for="reg-name"><span>👤</span> Full Legal Name</label>
+              <input type="text" id="reg-name" placeholder="Ananya Sharma" autocomplete="name" />
+            </div>
+            <div class="field-group">
+              <label for="reg-email"><span>📧</span> Secure Email</label>
+              <input type="email" id="reg-email" placeholder="you@example.com" autocomplete="email" />
+            </div>
+            <div class="field-group">
+              <label for="reg-mobile"><span>📱</span> Mobile Number</label>
+              <input type="tel" id="reg-mobile" placeholder="+91 98765 43210" autocomplete="tel" />
+            </div>
+            <div class="field-group">
+              <label for="reg-pass"><span>🔒</span> Create Password</label>
+              <input type="password" id="reg-pass" placeholder="Min. 6 characters" autocomplete="new-password" />
+            </div>
+            <div class="field-group">
+              <label for="reg-confirm"><span>🛡️</span> Confirm Password</label>
+              <input type="password" id="reg-confirm" placeholder="Repeat password" autocomplete="new-password" />
+            </div>
+            <div class="field-group">
+              <label for="reg-ec-name"><span>🚨</span> Emergency Contact Name</label>
+              <input type="text" id="reg-ec-name" placeholder="Maa / Papa / Friend" />
+            </div>
+            <div class="field-group">
+              <label for="reg-ec-phone"><span>📞</span> Emergency Contact Phone</label>
+              <input type="tel" id="reg-ec-phone" placeholder="+91 99999 00000" />
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">ENCRYPT &amp; REGISTER</button>
+          </form>
+
+          <div class="cyber-footer-note">
+            <span>🔒 256-Bit Encrypted</span> · <span>MongoDB Synchronized</span> · <span>Zero-Lag SOS</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── DASHBOARD / HOME ── -->
+    <section id="screen-home" class="screen hidden">
+      <header class="app-header">
+        <div class="header-brand">
+          <svg width="28" height="28" viewBox="0 0 56 56" fill="none" aria-hidden="true">
+            <path d="M28 4L8 12V28C8 39.05 16.95 49.4 28 52C39.05 49.4 48 39.05 48 28V12L28 4Z"
+                  fill="#4f46e5" stroke="#312e81" stroke-width="1.5"/>
+            <path d="M22 28L26 32L34 23" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span class="header-title">SafeRoute</span>
+          <span class="header-sih-tag desktop-only">SIH 2026</span>
+        </div>
+
+        <!-- Desktop Central Top Navigation Bar -->
+        <nav class="desktop-top-nav desktop-only" aria-label="Desktop Primary Navigation">
+          <button class="top-nav-btn active" id="topnav-home" onclick="showTab('home')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <span>Home</span>
+          </button>
+          <button class="top-nav-btn" id="topnav-contacts" onclick="showTab('contacts')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+            <span>Contacts</span>
+          </button>
+          <button class="top-nav-btn" id="topnav-nearby" onclick="showTab('nearby')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 00-8 8c0 5.4 8 13 8 13s8-7.6 8-13a8 8 0 00-8-8z"/></svg>
+            <span>Safe Havens</span>
+          </button>
+          <button class="top-nav-btn" id="topnav-history" onclick="showTab('history')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>Alert Logs</span>
+          </button>
+          <button class="top-nav-btn" id="topnav-privacy" onclick="showTab('privacy')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            <span>Privacy</span>
+          </button>
+        </nav>
+
+        <div class="header-user">
+          <div class="header-gps-lock desktop-only" title="GPS Real-time Locked">
+            <span class="hgl-pulse"></span>
+            <span>GPS: LIVE LOCK</span>
+          </div>
+          <span id="db-status-pill" class="db-pill" title="MongoDB Status">🍃 MongoDB</span>
+          <span id="header-username" class="user-label"></span>
+          <button class="icon-btn" onclick="handleLogout()" title="Logout" aria-label="Logout">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="screen-content">
+        <div class="dash-layout">
+          <!-- ── COL 1: COMMAND & TELEMETRY ── -->
+          <div class="dash-col dash-col-command">
+            <!-- ── CYBER VAULT HERO HUD ── -->
+            <div class="cyber-hud-card">
+              <div class="hud-scanner-line"></div>
+              <div class="hud-left">
+                <div class="hud-vault-ring">
+                  <div class="hud-orbit-ring hud-orbit-1"></div>
+                  <div class="hud-orbit-ring hud-orbit-2"></div>
+                  <div class="hud-lock-core">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                      <circle cx="12" cy="16" r="1.5" fill="currentColor"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+              <div class="hud-right">
+                <div class="hud-pill-tag">
+                  <span class="hud-dot-pulse"></span>
+                  <span>QUANTUM SHIELD ONLINE</span>
+                </div>
+                <h2 class="hud-title">CYBER GUARDIAN ACTIVE</h2>
+                <div class="hud-telemetry">
+                  <span>🛰️ GPS: <strong style="color:#4ade80;">Synchronized</strong></span>
+                  <span>🔒 256-Bit Matrix</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Status Card -->
+            <div id="status-card" class="status-card safe">
+              <div class="status-icon-wrap">
+                <svg width="32" height="32" viewBox="0 0 56 56" fill="none" aria-hidden="true">
+                  <path d="M28 4L8 12V28C8 39.05 16.95 49.4 28 52C39.05 49.4 48 39.05 48 28V12L28 4Z"
+                        fill="currentColor" opacity="0.3"/>
+                  <path d="M22 28L26 32L34 23" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div class="status-text">
+                <span id="status-label" class="status-label">SAFE</span>
+                <span id="status-sub" class="status-sub">No active session</span>
+              </div>
+            </div>
+
+            <!-- Start Session Button -->
+            <button class="card card-primary card-span-full card-start-btn" onclick="goToStartSession()">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/>
+                <line x1="8" y1="12" x2="16" y2="12"/>
+              </svg>
+              <span>Start Safety Session</span>
+            </button>
+
+            <!-- Demo Mode Toggle -->
+            <div class="demo-banner">
+              <label class="toggle-row" for="demo-mode-toggle">
+                <span>
+                  <strong>Demo Mode</strong>
+                  <small>Timers run at 10× speed</small>
+                </span>
+                <input type="checkbox" id="demo-mode-toggle" role="switch" onchange="toggleDemoMode(this.checked)" />
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+
+            <!-- Laptop Shortcuts Widget (Visible on Laptop / Desktop) -->
+            <div class="desktop-shortcuts-card">
+              <div class="dsc-title">⌨️ Laptop Quick Keys</div>
+              <div class="dsc-item"><kbd>Shift + S</kbd> <span>Instant SOS Alert</span></div>
+              <div class="dsc-item"><kbd>Esc</kbd> <span>Close Any Modal</span></div>
+              <div class="dsc-item"><kbd>Space</kbd> <span>Mute Siren Alarm</span></div>
+            </div>
+          </div>
+
+          <!-- ── COL 2: WOMEN SAFETY PRO ARSENAL ── -->
+          <div class="dash-col dash-col-arsenal">
+            <!-- ── WOMEN SAFETY INSTANT ARSENAL ── -->
+            <div class="safety-arsenal-box">
+              <div class="arsenal-header">
+                <span class="arsenal-badge">🛡️ Women Safety Arsenal</span>
+                <small class="arsenal-sub">6 Pro-Defense Tools</small>
+              </div>
+              <div class="arsenal-grid">
+                <button class="arsenal-btn fc-btn-theme" onclick="openFakeCallMenu()">
+                  <span class="ab-icon">📞</span>
+                  <strong>Fake Call</strong>
+                  <small>Simulate parent call</small>
+                </button>
+                <button class="arsenal-btn siren-btn-theme" onclick="triggerPanicSiren()">
+                  <span class="ab-icon">🚨</span>
+                  <strong>Panic Siren</strong>
+                  <small>Loud Alarm + Strobe</small>
+                </button>
+                <button class="arsenal-btn calc-btn-theme" onclick="openCalculatorMode()">
+                  <span class="ab-icon">🔢</span>
+                  <strong>Stealth Mode</strong>
+                  <small>Secret Calculator Mask</small>
+                </button>
+                <button class="arsenal-btn ride-btn-theme" onclick="openRideShieldModal()">
+                  <span class="ab-icon">🚖</span>
+                  <strong>Cab Ride Shield</strong>
+                  <small>Auto/Taxi halt guard</small>
+                </button>
+                <button class="arsenal-btn haven-btn-theme" onclick="openSafeHavensModal()">
+                  <span class="ab-icon">🏥</span>
+                  <strong>24x7 Safe Havens</strong>
+                  <small>Nearby open shelters</small>
+                </button>
+                <button class="arsenal-btn route-btn-theme" onclick="openSafeRouteModal()">
+                  <span class="ab-icon">🛣️</span>
+                  <strong>Safe Route AI</strong>
+                  <small>Lit vs dark alleys</small>
+                </button>
+              </div>
+              <div style="display:flex; gap:8px; margin-top:10px;">
+                <button class="arsenal-btn sms-btn-theme" style="flex:1; padding:8px 10px;" onclick="triggerOfflineEmergencySMS()">
+                  <strong style="font-size:0.75rem;">📲 1-Tap Offline SMS</strong>
+                  <small style="font-size:0.65rem;">Direct GPS to family</small>
+                </button>
+                <button class="arsenal-btn battery-btn-theme" style="flex:1; padding:8px 10px;" onclick="checkBatteryGuard()">
+                  <strong style="font-size:0.75rem;">🔋 Battery Guard</strong>
+                  <small style="font-size:0.65rem;" id="battery-status-hint">Auto pre-alert on &lt;15%</small>
+                </button>
+              </div>
+            </div>
+
+            <!-- Last alert preview -->
+            <div id="last-alert-preview" class="last-alert hidden"></div>
+          </div>
+
+          <!-- ── COL 3: SERVICES & NATIONAL HELPLINES ── -->
+          <div class="dash-col dash-col-services">
+            <div class="services-header-tag">
+              <span>⚡ SERVICES &amp; SETTINGS</span>
+            </div>
+            <!-- Grid cards -->
+            <div class="card-grid">
+              <button class="card" onclick="showTab('contacts')">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+                </svg>
+                <span>Trusted Contacts</span>
+                <small id="contacts-count-badge"></small>
+              </button>
+
+              <button class="card" onclick="showTab('nearby')">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 00-8 8c0 5.4 8 13 8 13s8-7.6 8-13a8 8 0 00-8-8z"/>
+                </svg>
+                <span>Nearby Services</span>
+              </button>
+
+              <button class="card" onclick="showTab('history')">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <span>Alert History</span>
+                <small id="history-count-badge"></small>
+              </button>
+
+              <button class="card" onclick="showTab('privacy')">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0110 0v4"/>
+                </svg>
+                <span>Privacy Settings</span>
+              </button>
+            </div>
+
+            <!-- National Emergency Helpline Quick Bar -->
+            <div class="helpline-quick-card">
+              <span class="hqc-title">🚨 24x7 Emergency Helplines</span>
+              <div class="hqc-btns">
+                <a href="tel:112" class="hqc-btn hqc-112"><span>📞 112</span> <small>National SOS</small></a>
+                <a href="tel:1091" class="hqc-btn hqc-1091"><span>👩 1091</span> <small>Women Helpline</small></a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Bottom Nav -->
+      <nav class="bottom-nav" role="navigation" aria-label="Main navigation">
+        <button class="nav-btn active" id="nav-home" onclick="showTab('home')" aria-label="Home">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span>Home</span>
+        </button>
+        <button class="nav-btn" id="nav-contacts" onclick="showTab('contacts')" aria-label="Contacts">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+          <span>Contacts</span>
+        </button>
+        <button class="nav-btn" id="nav-nearby" onclick="showTab('nearby')" aria-label="Nearby">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 00-8 8c0 5.4 8 13 8 13s8-7.6 8-13a8 8 0 00-8-8z"/></svg>
+          <span>Nearby</span>
+        </button>
+        <button class="nav-btn" id="nav-history" onclick="showTab('history')" aria-label="History">
+          <svg width="22" height="22" viewBox="0 0 24     <!-- ── TAB: CONTACTS ── -->
+    <section id="screen-contacts" class="screen hidden">
+      <header class="app-header">
+        <div class="header-brand">
+          <button class="icon-btn" onclick="showTab('home')" aria-label="Back">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span class="header-title">Trusted Contacts</span>
+        </div>
+        <nav class="desktop-top-nav desktop-only" aria-label="Desktop Navigation">
+          <button class="top-nav-btn" onclick="showTab('home')"><span>🏠</span> Home</button>
+          <button class="top-nav-btn active" onclick="showTab('contacts')"><span>👥</span> Contacts</button>
+          <button class="top-nav-btn" onclick="showTab('nearby')"><span>🏥</span> Safe Havens</button>
+          <button class="top-nav-btn" onclick="showTab('history')"><span>📜</span> Logs</button>
+          <button class="top-nav-btn" onclick="showTab('privacy')"><span>🔒</span> Privacy</button>
+        </nav>
+        <div class="header-user">
+          <button class="icon-btn" onclick="openAddContact()" aria-label="Add contact" title="Add contact">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+      </header>
+      <main class="screen-content">
+        <p class="section-hint">Contacts added here can be alerted automatically during emergencies.</p>
+        <div id="contacts-list"></div>
+        <button class="btn btn-primary btn-full mt-16" onclick="openAddContact()">+ Add Contact</button>
+      </main>
+      <nav class="bottom-nav" role="navigation">
+        <button class="nav-btn" onclick="showTab('home')" aria-label="Home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>Home</span></button>
+        <button class="nav-btn active" onclick="showTab('contacts')" aria-label="Contacts"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg><span>Contacts</span></button>
+        <button class="nav-btn" onclick="showTab('nearby')" aria-label="Nearby"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 00-8 8c0 5.4 8 13 8 13s8-7.6 8-13a8 8 0 00-8-8z"/></svg><span>Nearby</span></button>
+        <button class="nav-btn" onclick="showTab('history')" aria-label="History"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>History</span></button>
+        <button class="nav-btn" onclick="showTab('privacy')" aria-label="Privacy"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span>Privacy</span></button>
+      </nav>
+    </section>
+
+    <!-- ── TAB: NEARBY SERVICES ── -->
+    <section id="screen-nearby" class="screen hidden">
+      <header class="app-header">
+        <div class="header-brand">
+          <button class="icon-btn" onclick="showTab('home')" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+          <span class="header-title">Nearby Havens</span>
+        </div>
+        <nav class="desktop-top-nav desktop-only" aria-label="Desktop Navigation">
+          <button class="top-nav-btn" onclick="showTab('home')"><span>🏠</span> Home</button>
+          <button class="top-nav-btn" onclick="showTab('contacts')"><span>👥</span> Contacts</button>
+          <button class="top-nav-btn active" onclick="showTab('nearby')"><span>🏥</span> Safe Havens</button>
+          <button class="top-nav-btn" onclick="showTab('history')"><span>📜</span> Logs</button>
+          <button class="top-nav-btn" onclick="showTab('privacy')"><span>🔒</span> Privacy</button>
+        </nav>
+        <div class="header-user">
+          <span class="desktop-badge">24/7 LIVE</span>
+        </div>
+      </header>
+      <main class="screen-content">
+        <p class="section-hint">Demo data. Real distances require live location.</p>
+        <div class="services-two-col">
+          <div class="services-col">
+            <h3 class="section-title">🚔 Police Stations &amp; Booths</h3>
+            <div id="police-list"></div>
+          </div>
+          <div class="services-col">
+            <h3 class="section-title">🏥 24/7 Hospitals &amp; Havens</h3>
+            <div id="hospital-list"></div>
+          </div>
+        </div>
+      </main>
+      <nav class="bottom-nav" role="navigation">
+        <button class="nav-btn" onclick="showTab('home')" aria-label="Home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>Home</span></button>
+        <button class="nav-btn" onclick="showTab('contacts')" aria-label="Contacts"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg><span>Contacts</span></button>
+        <button class="nav-btn active" onclick="showTab('nearby')" aria-label="Nearby"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 00-8 8c0 5.4 8 13 8 13s8-7.6 8-13a8 8 0 00-8-8z"/></svg><span>Nearby</span></button>
+        <button class="nav-btn" onclick="showTab('history')" aria-label="History"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>History</span></button>
+        <button class="nav-btn" onclick="showTab('privacy')" aria-label="Privacy"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span>Privacy</span></button>
+      </nav>
+    </section>
+
+    <!-- ── TAB: HISTORY ── -->
+    <section id="screen-history" class="screen hidden">
+      <header class="app-header">
+        <div class="header-brand">
+          <button class="icon-btn" onclick="showTab('home')" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+          <span class="header-title">Alert History Logs</span>
+        </div>
+        <nav class="desktop-top-nav desktop-only" aria-label="Desktop Navigation">
+          <button class="top-nav-btn" onclick="showTab('home')"><span>🏠</span> Home</button>
+          <button class="top-nav-btn" onclick="showTab('contacts')"><span>👥</span> Contacts</button>
+          <button class="top-nav-btn" onclick="showTab('nearby')"><span>🏥</span> Safe Havens</button>
+          <button class="top-nav-btn active" onclick="showTab('history')"><span>📜</span> Logs</button>
+          <button class="top-nav-btn" onclick="showTab('privacy')"><span>🔒</span> Privacy</button>
+        </nav>
+        <div class="header-user">
+          <button class="icon-btn" onclick="clearHistory()" title="Clear history" aria-label="Clear history">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+          </button>
+        </div>
+      </header>
+      <main class="screen-content">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:8px;">
+          <button class="btn btn-primary" style="font-size:0.8rem; padding:8px 12px; flex:1;" onclick="triggerManualEvidenceUpload()">
+            📷 + 🎥 Upload Evidence to MongoDB
+          </button>
+          <input type="file" id="manual-evidence-input" accept="image/*,video/*" style="display:none;" onchange="handleManualEvidenceUpload(this)" />
+        </div>
+        <div id="history-list"></div>
+      </main>
+      <nav class="bottom-nav" role="navigation">
+        <button class="nav-btn" onclick="showTab('home')" aria-label="Home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>Home</span></button>
+        <button class="nav-btn" onclick="showTab('contacts')" aria-label="Contacts"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg><span>Contacts</span></button>
+        <button class="nav-btn" onclick="showTab('nearby')" aria-label="Nearby"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 00-8 8c0 5.4 8 13 8 13s8-7.6 8-13a8 8 0 00-8-8z"/></svg><span>Nearby</span></button>
+        <button class="nav-btn active" onclick="showTab('history')" aria-label="History"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>History</span></button>
+        <button class="nav-btn" onclick="showTab('privacy')" aria-label="Privacy"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span>Privacy</span></button>
+      </nav>
+    </section>
+
+    <!-- ── TAB: PRIVACY ── -->
+    <section id="screen-privacy" class="screen hidden">
+      <header class="app-header">
+        <div class="header-brand">
+          <button class="icon-btn" onclick="showTab('home')" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+          <span class="header-title">Privacy &amp; Security Shield</span>
+        </div>
+        <nav class="desktop-top-nav desktop-only" aria-label="Desktop Navigation">
+          <button class="top-nav-btn" onclick="showTab('home')"><span>🏠</span> Home</button>
+          <button class="top-nav-btn" onclick="showTab('contacts')"><span>👥</span> Contacts</button>
+          <button class="top-nav-btn" onclick="showTab('nearby')"><span>🏥</span> Safe Havens</button>
+          <button class="top-nav-btn" onclick="showTab('history')"><span>📜</span> Logs</button>
+          <button class="top-nav-btn active" onclick="showTab('privacy')"><span>🔒</span> Privacy</button>
+        </nav>
+        <div class="header-user">
+          <span class="desktop-badge">🔒 256-BIT</span>
+        </div>
+      </header>
+      <main class="screen-content">
+        <div class="privacy-notice">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Camera and phone features are used <strong>only when you allow it.</strong> All data stays on your device.
+        </div>
+
+        <div class="settings-card">
+          <label class="toggle-row" for="priv-location">
+            <span>
+              <strong>Share Live Location</strong>
+              <small>Send coordinates to contacts during emergencies</small>
+            </span>
+            <input type="checkbox" id="priv-location" role="switch" onchange="savePrivacy()" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
+        <div class="settings-card">
+          <label class="toggle-row" for="priv-camera">
+            <span>
+              <strong>Emergency Camera Recording</strong>
+              <small>Record video evidence only during active SOS</small>
+            </span>
+            <input type="checkbox" id="priv-camera" role="switch" onchange="savePrivacy()" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
+        <div class="settings-card">
+          <label class="toggle-row" for="priv-checkin-vibrate">
+            <span>
+              <strong>Vibrate on Check-in</strong>
+              <small>Pulse on safety check-in prompt</small>
+            </span>
+            <input type="checkbox" id="priv-checkin-vibrate" role="switch" onchange="savePrivacy()" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
+        <div class="settings-card">
+          <label class="toggle-row" for="priv-shake">
+            <span>
+              <strong>📳 Shake-to-SOS Trigger</strong>
+              <small>Shake phone 3× rapidly to trigger instant SOS</small>
+            </span>
+            <input type="checkbox" id="priv-shake" role="switch" checked onchange="savePrivacy()" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
+        <div class="settings-card">
+          <label class="toggle-row" for="priv-audio">
+            <span>
+              <strong>🎙️ Ambient Audio Evidence</strong>
+              <small>Record background audio evidence during emergencies</small>
+            </span>
+            <input type="checkbox" id="priv-audio" role="switch" checked onchange="savePrivacy()" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
+        <div class="settings-card">
+          <label class="toggle-row" for="demo-mode-toggle-privacy">
+            <span>
+              <strong>Demo Mode</strong>
+              <small>Timers run at 10× speed for presentations</small>
+            </span>
+            <input type="checkbox" id="demo-mode-toggle-privacy" role="switch" onchange="toggleDemoMode(this.checked)" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
+        <p class="legal-text">SafeRoute is a prototype. In production, all data would be end-to-end encrypted. No real SMS/calls are made in this demo.</p>
+      </main>
+      <nav class="bottom-nav" role="navigation">
+        <button class="nav-btn" onclick="showTab('home')" aria-label="Home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>Home</span></button>
+        <button class="nav-btn" onclick="showTab('contacts')" aria-label="Contacts"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg><span>Contacts</span></button>
+        <button class="nav-btn" onclick="showTab('nearby')" aria-label="Nearby"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 00-8 8c0 5.4 8 13 8 13s8-7.6 8-13a8 8 0 00-8-8z"/></svg><span>Nearby</span></button>
+        <button class="nav-btn" onclick="showTab('history')" aria-label="History"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>History</span></button>
+        <button class="nav-btn active" onclick="showTab('privacy')" aria-label="Privacy"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span>Privacy</span></button>
+      </nav>
+    </section>
+
+    <!-- ── START SESSION SCREEN ── -->
+    <section id="screen-start-session" class="screen hidden">
+      <header class="app-header">
+        <button class="icon-btn" onclick="showTab('home')" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <h2 class="header-title-center">New Safety Session</h2>
+        <span></span>
+      </header>
+      <main class="screen-content">
+        <div class="session-form-grid">
+          <div class="session-form-col">
+            <!-- Journey details -->
+            <div class="settings-card">
+              <h3 class="card-section-title">Journey Details</h3>
+              <div class="field-group">
+                <label for="sess-from">Starting Location</label>
+                <input type="text" id="sess-from" placeholder="e.g. College Gate A" />
+              </div>
+              <div class="field-group">
+                <label for="sess-to">Destination</label>
+                <input type="text" id="sess-to" placeholder="e.g. Home – Sector 15" />
+              </div>
+            </div>
+
+            <!-- Duration -->
+            <div class="settings-card">
+              <h3 class="card-section-title">Session Duration</h3>
+              <div class="duration-chips" role="group" aria-label="Session duration">
+                <button class="chip" onclick="selectDuration(1)">1 min</button>
+                <button class="chip" onclick="selectDuration(5)">5 min</button>
+                <button class="chip chip-active" onclick="selectDuration(10)">10 min</button>
+                <button class="chip" onclick="selectDuration(15)">15 min</button>
+              </div>
+              <div class="field-group mt-8">
+                <label for="sess-custom-duration">Custom (minutes)</label>
+                <input type="number" id="sess-custom-duration" min="1" max="120" placeholder="e.g. 20"
+                       oninput="selectDuration(Number(this.value), true)" />
+              </div>
+              <p class="duration-display">Selected: <strong id="sess-duration-label">10 minutes</strong></p>
+
+              <div class="field-group mt-8">
+                <label for="sess-checkin-interval">Check-in Interval (seconds)</label>
+                <input type="number" id="sess-checkin-interval" min="10" max="300" value="30" placeholder="30" />
+                <small class="field-hint">How often to ask "Are you safe?"</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="session-form-col">
+            <!-- Contacts to alert -->
+            <div class="settings-card">
+              <h3 class="card-section-title">Contacts to Alert</h3>
+              <p class="section-hint">Select who gets notified during emergencies.</p>
+              <div id="sess-contacts-list"></div>
+            </div>
+
+            <!-- Privacy -->
+            <div class="settings-card">
+              <h3 class="card-section-title">Privacy &amp; Evidence</h3>
+              <label class="toggle-row" for="sess-camera-toggle">
+                <span>
+                  <strong>Emergency Evidence Recording</strong>
+                  <small>Camera recording during SOS only</small>
+                </span>
+                <input type="checkbox" id="sess-camera-toggle" role="switch" />
+                <span class="toggle-track"></span>
+              </label>
+              <label class="toggle-row mt-8" for="sess-location-toggle">
+                <span>
+                  <strong>Share Live Location</strong>
+                  <small>Send GPS coords to contacts</small>
+                </span>
+                <input type="checkbox" id="sess-location-toggle" role="switch" checked />
+                <span class="toggle-track"></span>
+              </label>
+              <p class="privacy-notice-small">Evidence recording will only be used when you have given permission.</p>
+            </div>
+
+            <button class="btn btn-primary btn-full btn-large mt-16" onclick="startSession()">
+              🛡️ Start Safety Session
+            </button>
+          </div>
+        </div>
+      </main>
+    </section>
+
+    <!-- ── MONITORING SCREEN ── -->
+    <section id="screen-monitor" class="screen hidden">
+      <header class="app-header header-safe" id="monitor-header">
+        <div class="header-brand">
+          <svg width="24" height="24" viewBox="0 0 56 56" fill="none" aria-hidden="true"><path d="M28 4L8 12V28C8 39.05 16.95 49.4 28 52C39.05 49.4 48 39.05 48 28V12L28 4Z" fill="#4f46e5" stroke="#312e81" stroke-width="1.5"/><path d="M22 28L26 32L34 23" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="header-title">Active Session Console</span>
+        </div>
+        <div class="header-user">
+          <div class="header-gps-lock desktop-only">
+            <span class="hgl-pulse"></span>
+            <span>LIVE GPS ACTIVE</span>
+          </div>
+          <span id="monitor-status-badge" class="session-badge safe">SAFE</span>
+        </div>
+      </header>
+
+      <main class="screen-content monitor-content">
+        <div class="monitor-grid">
+          <!-- Col 1: Big Timer & Immediate Safety Controls -->
+          <div class="monitor-col-left">
+            <div class="timer-container">
+              <div class="timer-label">Session ends in</div>
+              <div id="main-timer" class="main-timer" aria-live="polite">00:10:00</div>
+              <div class="timer-sub" id="checkin-countdown-label">Next check-in in <span id="checkin-secs">30</span>s</div>
+            </div>
+
+            <div class="monitor-actions">
+              <button class="btn btn-safe btn-action" onclick="userSafe()">
+                ✅ I'm Safe
+              </button>
+              <button class="btn btn-extend btn-action" onclick="extendTime()">
+                ⏰ Extend Time
+              </button>
+            </div>
+            <button class="btn btn-danger btn-full mt-8" onclick="manualSOS()">
+              🆘 Need Help – SOS
+            </button>
+            <button class="btn btn-ghost btn-full mt-8" onclick="endSession()">
+              End Session
+            </button>
+          </div>
+
+          <!-- Col 2: Live Map Tracking & Telemetry Dashboard -->
+          <div class="monitor-col-right">
+            <div class="map-card" id="map-card">
+              <div class="map-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 00-8 8c0 5.4 8 13 8 13s8-7.6 8-13a8 8 0 00-8-8z"/></svg>
+                Current Location &amp; Route Telemetry
+              </div>
+              <div class="mock-map" id="mock-map">
+                <div class="map-pin-label" id="map-coords">Acquiring location…</div>
+                <div class="map-dot pulse-dot"></div>
+              </div>
+              <div class="map-route">
+                <span id="map-from">–</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                <span id="map-to">–</span>
+              </div>
+            </div>
+
+            <!-- Live Session Telemetry Card -->
+            <div class="monitor-telemetry-card">
+              <div class="mtc-header">
+                <span>🛰️ Live Security Telemetry</span>
+                <span class="mtc-status-live">● ENCRYPTED FEED</span>
+              </div>
+              <div class="mtc-grid">
+                <div class="mtc-stat"><span>Route AI:</span> <strong>Active Shield</strong></div>
+                <div class="mtc-stat"><span>Audio Guard:</span> <strong>Ambient Standby</strong></div>
+                <div class="mtc-stat"><span>GPS Lock:</span> <strong style="color:#4ade80;">Real-Time Matrix</strong></div>
+                <div class="mtc-stat"><span>Evidence Rec:</span> <strong>Auto-Trigger SOS</strong></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Check-in popup overlay (inside monitor screen) -->
+      <div id="checkin-popup" class="checkin-popup hidden" role="alertdialog" aria-modal="true" aria-label="Safety check-in">
+        <div class="checkin-box">
+          <div class="checkin-icon">🛡️</div>
+          <h3>Are you safe?</h3>
+          <p>Please respond in <strong><span id="checkin-timer">10</span> seconds</strong><br/>or an emergency alert will activate.</p>
+          <div class="checkin-progress-wrap">
+            <div class="checkin-progress" id="checkin-progress-bar"></div>
+          </div>
+          <div class="checkin-actions">
+            <button class="btn btn-safe" onclick="checkInSafe()">✅ I'm Safe</button>
+            <button class="btn btn-danger" onclick="manualSOS()">🆘 SOS</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── EMERGENCY SCREEN ── -->
+    <section id="screen-emergency" class="screen hidden">
+      <div class="emergency-screen" id="emergency-content">
+        <div class="emergency-pulse"></div>
+        <div class="emergency-header">
+          <div class="emergency-icon">🚨</div>
+          <h1 class="emergency-title">EMERGENCY ALERT<br/>ACTIVE</h1>
+          <p id="emergency-reason" class="emergency-reason"></p>
+        </div>
+
+        <!-- Alert ID / meta -->
+        <div class="alert-meta">
+          <div class="meta-row"><span>Alert ID</span><strong id="em-alert-id">–</strong></div>
+          <div class="meta-row"><span>Time</span><strong id="em-time">–</strong></div>
+          <div class="meta-row"><span>Type</span><strong id="em-type">–</strong></div>
+        </div>
+
+        <!-- Steps -->
+        <div class="sos-steps" id="sos-steps">
+          <div class="sos-step" id="step-sos">
+            <span class="step-icon">📡</span>
+            <span class="step-text">Sending SOS…</span>
+            <span class="step-status">⏳</span>
+          </div>
+          <div class="sos-step" id="step-location">
+            <span class="step-icon">📍</span>
+            <span class="step-text">Getting location…</span>
+            <span class="step-status">⏳</span>
+          </div>
+          <div class="sos-step" id="step-share">
+            <span class="step-icon">📤</span>
+            <span class="step-text">Sharing with contacts…</span>
+            <span class="step-status">⏳</span>
+          </div>
+          <div class="sos-step" id="step-contacts">
+            <span class="step-icon">📲</span>
+            <span class="step-text">Alerting trusted contacts…</span>
+            <span class="step-status">⏳</span>
+          </div>
+          <div class="sos-step" id="step-camera">
+            <span class="step-icon">🎥</span>
+            <span class="step-text">Evidence recording…</span>
+            <span class="step-status">⏳</span>
+          </div>
+        </div>
+
+        <!-- Camera Live Box -->
+        <div id="camera-live-box" class="camera-live-box hidden">
+          <div class="camera-recording-indicator">● REC Evidence</div>
+          <video id="camera-live-video" class="camera-live-video" autoplay playsinline muted></video>
+        </div>
+
+        <!-- Location display -->
+        <div class="em-location-card hidden" id="em-location-card">
+          <p class="em-location-label">📍 Location Shared</p>
+          <p id="em-location-coords" class="em-location-coords"></p>
+          <p class="em-demo-label">Demo – no real message sent</p>
+        </div>
+
+        <!-- Contact notification preview -->
+        <div id="em-contact-notifs" class="em-contact-notifs hidden"></div>
+
+        <!-- Cancel grace period -->
+        <div id="cancel-grace" class="cancel-grace hidden">
+          <p>Are you actually safe?</p>
+          <button class="btn btn-outline-white" onclick="openDuressPinModal()">
+            ✅ Cancel / Enter PIN (<span id="grace-count">5</span>)
+          </button>
+        </div>
+
+        <button class="btn btn-outline-white btn-full mt-16" onclick="openDuressPinModal()">
+          🔒 End Emergency (PIN Protected)
+        </button>
+      </div>
+    </section>
+
+  </div><!-- /app -->
+
+  <!-- ── CONTACT EDIT MODAL CONTENT (injected by JS) ── -->
+  <script src="app.js"></script>
+</body>
+</html>
