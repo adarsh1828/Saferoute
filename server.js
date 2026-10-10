@@ -9,8 +9,13 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { createClient } = require('@libsql/client');
+const http = require('http');
+const { Server } = require('socket.io');
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: '*' } });
+
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'saferoute_sih_secret_key_2026';
 
@@ -193,15 +198,33 @@ async function initTursoTables() {
     tursoErrorMsg = null;
     console.log(`✅ Connected successfully to Turso Cloud DB: ${TURSO_URL}`);
 
-    // Optional: Migrate existing local users to Turso so nothing is lost
+    // Bidirectional sync: If local fileDB is empty, pull existing users from Turso
     const localUsers = fileDB.getUsers();
-    for (const u of localUsers) {
+    if (localUsers.length === 0) {
       try {
-        await tursoClient.execute({
-          sql: `INSERT OR IGNORE INTO users (id, name, email, mobile, password, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-          args: [u.id || crypto.randomUUID(), u.name, u.email.toLowerCase(), u.mobile, u.password, u.createdAt || new Date().toISOString()]
-        });
+        const tursoUsersRes = await tursoClient.execute('SELECT * FROM users');
+        if (tursoUsersRes.rows && tursoUsersRes.rows.length > 0) {
+          fileDB.saveUsers(tursoUsersRes.rows.map((r) => ({
+            id: r.id,
+            _id: r.id,
+            name: r.name,
+            email: r.email,
+            mobile: r.mobile,
+            password: r.password,
+            createdAt: r.created_at,
+          })));
+        }
       } catch (_) {}
+    } else {
+      // Migrate local users to Turso
+      for (const u of localUsers) {
+        try {
+          await tursoClient.execute({
+            sql: `INSERT OR IGNORE INTO users (id, name, email, mobile, password, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+            args: [u.id || crypto.randomUUID(), u.name, u.email.toLowerCase(), u.mobile, u.password, u.createdAt || new Date().toISOString()]
+          });
+        } catch (_) {}
+      }
     }
   } catch (err) {
     isTursoConnected = false;
@@ -305,6 +328,21 @@ app.post('/api/auth/register', async (req, res) => {
         sql: 'INSERT INTO users (id, name, email, mobile, password, created_at) VALUES (?, ?, ?, ?, ?, ?)',
         args: [newId, name.trim(), cleanEmail, mobile.trim(), hashedPassword, new Date().toISOString()],
       });
+
+      // Mirror to local fileDB
+      const localUsers = fileDB.getUsers();
+      if (!localUsers.some((u) => u.email === cleanEmail)) {
+        localUsers.push({
+          _id: newId,
+          id: newId,
+          name: name.trim(),
+          email: cleanEmail,
+          mobile: mobile.trim(),
+          password: hashedPassword,
+          createdAt: new Date().toISOString(),
+        });
+        fileDB.saveUsers(localUsers);
+      }
 
       const token = jwt.sign({ id: newId, email: cleanEmail, name: name.trim() }, JWT_SECRET, { expiresIn: '7d' });
 
@@ -410,6 +448,46 @@ app.post('/api/auth/login', async (req, res) => {
       token,
       user: { id: userId, name: user.name, email: user.email, mobile: user.mobile },
     });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Reset Password
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+    if (!email || !newPassword) {
+      return res.status(400).json({ success: false, error: 'Email and new password required' });
+    }
+    const cleanEmail = email.toLowerCase().trim();
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    if (isTursoConnected && tursoClient) {
+      const existing = await tursoClient.execute({
+        sql: 'SELECT id FROM users WHERE email = ?',
+        args: [cleanEmail],
+      });
+      if (existing.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'No account registered with this email' });
+      }
+      await tursoClient.execute({
+        sql: 'UPDATE users SET password = ? WHERE email = ?',
+        args: [hashedPassword, cleanEmail],
+      });
+    }
+
+    const users = fileDB.getUsers();
+    const idx = users.findIndex((u) => u.email === cleanEmail);
+    if (idx !== -1) {
+      users[idx].password = hashedPassword;
+      fileDB.saveUsers(users);
+    } else if (!isTursoConnected) {
+      return res.status(404).json({ success: false, error: 'No account registered with this email' });
+    }
+
+    res.json({ success: true, message: 'Password updated successfully! Please login with your new password.' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -845,9 +923,19 @@ app.post('/api/alerts', async (req, res) => {
         ],
       });
 
+      const alertPayload = { id: newId, _id: newId, alertId, type, reason, location, from, to, contactsAlerted, time, userEmail, userName, status: 'Active', evidence: [], createdAt: new Date().toISOString() };
+      
+      // Mirror to fileDB
+      const localAlerts = fileDB.getAlerts();
+      localAlerts.unshift(alertPayload);
+      fileDB.saveAlerts(localAlerts);
+
+      // Broadcast real-time emergency alert to guardians and connected clients
+      io.emit('new-emergency-alert', alertPayload);
+
       return res.json({
         success: true,
-        alert: { id: newId, alertId, type, reason, location, from, to, contactsAlerted, time, userEmail, userName, status: 'Active' },
+        alert: alertPayload,
       });
     }
 
@@ -870,6 +958,9 @@ app.post('/api/alerts', async (req, res) => {
     };
     alerts.unshift(newAlert);
     fileDB.saveAlerts(alerts);
+
+    // Broadcast real-time emergency alert
+    io.emit('new-emergency-alert', newAlert);
 
     res.json({ success: true, alert: newAlert });
   } catch (err) {
@@ -1041,12 +1132,35 @@ function getLocalNetworkIp() {
   return 'localhost';
 }
 
+// Socket.io Real-Time Tracking & Alert Engine
+io.on('connection', (socket) => {
+  // Join a specific alert tracking room (for guardians & police)
+  socket.on('join-alert', (alertId) => {
+    if (alertId) {
+      socket.join(alertId);
+      console.log(`📡 Guardian joined real-time tracking room for: ${alertId}`);
+    }
+  });
+
+  // Victim broadcasts live GPS movement
+  socket.on('send-location', (data) => {
+    if (data && data.alertId) {
+      io.to(data.alertId).emit('guardian-location', data);
+    }
+  });
+
+  // Global SOS broadcast
+  socket.on('trigger-sos', (data) => {
+    io.emit('new-emergency-alert', data);
+  });
+});
+
 // Start Server (only when running as standalone Node server, not on Vercel)
 if (!process.env.VERCEL) {
-  app.listen(PORT, '0.0.0.0', () => {
+  server.listen(PORT, '0.0.0.0', () => {
     const localIp = getLocalNetworkIp();
     console.log(`\n======================================================`);
-    console.log(`🛡️  SafeRoute Unified Turso Server is LIVE!`);
+    console.log(`🛡️  SafeRoute Unified Turso & Socket.io Server is LIVE!`);
     console.log(`💻 Laptop Browser:  http://localhost:${PORT}`);
     console.log(`📱 Mobile Browser:  http://${localIp}:${PORT}`);
     console.log(`🌐 Turso Cloud URL: ${TURSO_URL}`);

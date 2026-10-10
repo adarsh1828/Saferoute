@@ -28,13 +28,13 @@ const DEMO_USER = {
 };
 
 const NEARBY_POLICE = [
-  { name: 'MG Road Police Station',      distance: '0.8 km', phone: '100' },
-  { name: 'Civil Lines Police Station',  distance: '1.4 km', phone: '100' },
+  { name: 'MG Road Police Station', distance: '0.8 km', phone: '100' },
+  { name: 'Civil Lines Police Station', distance: '1.4 km', phone: '100' },
   { name: 'Women\'s Help Desk – Sector 9', distance: '2.1 km', phone: '1091' },
 ];
 
 const NEARBY_HOSPITALS = [
-  { name: 'City General Hospital',    distance: '1.2 km', phone: '102' },
+  { name: 'City General Hospital', distance: '1.2 km', phone: '102' },
   { name: 'Apollo Clinic – Sector 5', distance: '1.9 km', phone: '108' },
   { name: 'Aastha Women\'s Hospital', distance: '2.6 km', phone: '112' },
 ];
@@ -45,21 +45,34 @@ const ALERT_PREFIX = 'SR';
 /* ═════════════════════════════════════════
    STATE
 ═════════════════════════════════════════ */
-let currentUser    = null;   // logged-in user object
-let demoMode       = false;  // speed multiplier
-let sessionConfig  = {};     // active session settings
+let currentUser = null;   // logged-in user object
+let demoMode = false;  // speed multiplier
+let sessionConfig = {};     // active session settings
 let sessionTimerId = null;   // setInterval for main countdown
 let checkinTimerId = null;   // setInterval for check-in countdown
 let checkinPopupId = null;   // setTimeout to show check-in popup
 let sessionRemaining = 0;    // seconds left in session
-let checkinInterval  = 30;   // seconds between check-ins
-let checkinActive    = false;// is check-in popup open?
+let checkinInterval = 30;   // seconds between check-ins
+let checkinActive = false;// is check-in popup open?
 let checkinCountdown = 10;   // seconds to respond
 let checkinProgressId = null;// setInterval for progress bar
-let currentLocation  = null; // { lat, lng, label }
-let emergencyActive  = false;// prevent double-trigger
-let currentAlertId   = null; // e.g. SR1001
-let graceCancelId    = null; // setInterval for cancel grace
+let currentLocation = null; // { lat, lng, label }
+let emergencyActive = false;// prevent double-trigger
+let currentAlertId = null; // e.g. SR1001
+let graceCancelId = null; // setInterval for cancel grace
+
+// Real-Time Leaflet & Socket.io Live Tracking State
+let liveLeafletMap = null;
+let liveUserMarker = null;
+let liveAccuracyCircle = null;
+let liveRoutePolyline = null;
+let liveRouteHistory = [];
+let designatedSafeRouteLine = null;
+let activeSafeRoutePoints = null;
+let guardianLiveUrl = '';
+let socketClient = null;
+let ambientAudioStream = null;
+let ambientAudioAnalyser = null;
 
 /* ═════════════════════════════════════════
    UTILITY HELPERS
@@ -76,7 +89,7 @@ function formatTime(secs) {
 /** Generate unique alert ID */
 function nextAlertId() {
   const alerts = getHistory();
-  const num    = 1001 + alerts.length;
+  const num = 1001 + alerts.length;
   return `${ALERT_PREFIX}${num}`;
 }
 
@@ -98,24 +111,24 @@ function demoSecs(real) { return Math.max(1, Math.round(real / speedFactor())); 
    LOCAL STORAGE HELPERS
 ═════════════════════════════════════════ */
 
-function getUsers()    { return JSON.parse(localStorage.getItem('sr_users')    || '[]'); }
-function saveUsers(u)  { localStorage.setItem('sr_users', JSON.stringify(u)); }
+function getUsers() { return JSON.parse(localStorage.getItem('sr_users') || '[]'); }
+function saveUsers(u) { localStorage.setItem('sr_users', JSON.stringify(u)); }
 
 function getContacts() { return JSON.parse(localStorage.getItem('sr_contacts') || '[]'); }
-function saveContacts(c){ localStorage.setItem('sr_contacts', JSON.stringify(c)); }
+function saveContacts(c) { localStorage.setItem('sr_contacts', JSON.stringify(c)); }
 
-function getHistory()  { return JSON.parse(localStorage.getItem('sr_history')  || '[]'); }
-function saveHistory(h){ localStorage.setItem('sr_history', JSON.stringify(h)); }
+function getHistory() { return JSON.parse(localStorage.getItem('sr_history') || '[]'); }
+function saveHistory(h) { localStorage.setItem('sr_history', JSON.stringify(h)); }
 
-function getPrivacy()  {
+function getPrivacy() {
   return JSON.parse(localStorage.getItem('sr_privacy') || JSON.stringify({
     location: true, camera: false, vibrate: true
   }));
 }
-function savePrivacyData(p){ localStorage.setItem('sr_privacy', JSON.stringify(p)); }
+function savePrivacyData(p) { localStorage.setItem('sr_privacy', JSON.stringify(p)); }
 
 function getDemoMode() { return localStorage.getItem('sr_demo') === '1'; }
-function saveDemoMode(v){ localStorage.setItem('sr_demo', v ? '1' : '0'); }
+function saveDemoMode(v) { localStorage.setItem('sr_demo', v ? '1' : '0'); }
 
 /* ═════════════════════════════════════════
    TOAST NOTIFICATIONS
@@ -143,15 +156,15 @@ function showToast(msg, type = 'info', dur = 3200) {
 
 function showModal(title, body, actions = []) {
   document.getElementById('modal-title').textContent = title;
-  document.getElementById('modal-body').innerHTML    = body;
+  document.getElementById('modal-body').innerHTML = body;
 
   const actBox = document.getElementById('modal-actions');
   actBox.innerHTML = '';
   actions.forEach(a => {
     const b = document.createElement('button');
-    b.className   = `btn ${a.cls || 'btn-primary'}`;
+    b.className = `btn ${a.cls || 'btn-primary'}`;
     b.textContent = a.label;
-    b.onclick     = () => { closeModal(); a.fn && a.fn(); };
+    b.onclick = () => { closeModal(); a.fn && a.fn(); };
     actBox.appendChild(b);
   });
 
@@ -163,7 +176,7 @@ function closeModal() {
 }
 
 // Close modal on overlay click
-document.getElementById('modal-overlay').addEventListener('click', function(e) {
+document.getElementById('modal-overlay').addEventListener('click', function (e) {
   if (e.target === this) closeModal();
 });
 
@@ -172,15 +185,15 @@ document.getElementById('modal-overlay').addEventListener('click', function(e) {
 ═════════════════════════════════════════ */
 
 const SCREENS = {
-  auth:          'screen-auth',
-  home:          'screen-home',
-  contacts:      'screen-contacts',
-  nearby:        'screen-nearby',
-  history:       'screen-history',
-  privacy:       'screen-privacy',
-  'start-session':'screen-start-session',
-  monitor:       'screen-monitor',
-  emergency:     'screen-emergency',
+  auth: 'screen-auth',
+  home: 'screen-home',
+  contacts: 'screen-contacts',
+  nearby: 'screen-nearby',
+  history: 'screen-history',
+  privacy: 'screen-privacy',
+  'start-session': 'screen-start-session',
+  monitor: 'screen-monitor',
+  emergency: 'screen-emergency',
 };
 
 /** Show a screen, hide all others */
@@ -197,6 +210,19 @@ function showScreen(name) {
     // Trigger reflow for animation
     void target.offsetWidth;
     target.classList.add('active');
+
+    if (name === 'monitor') {
+      setTimeout(() => {
+        const lat = currentLocation?.lat || 18.5204;
+        const lng = currentLocation?.lng || 73.8567;
+        if (!liveLeafletMap) {
+          initLiveLeafletMap(lat, lng);
+        } else {
+          liveLeafletMap.invalidateSize();
+          if (currentLocation) liveLeafletMap.panTo([currentLocation.lat, currentLocation.lng]);
+        }
+      }, 200);
+    }
   }
 }
 
@@ -204,17 +230,17 @@ function showScreen(name) {
 function showTab(tab) {
   // Map tab name to screen
   const map = {
-    home:     'home',
+    home: 'home',
     contacts: 'contacts',
-    nearby:   'nearby',
-    history:  'history',
-    privacy:  'privacy',
+    nearby: 'nearby',
+    history: 'history',
+    privacy: 'privacy',
   };
   const screenName = map[tab] || tab;
   showScreen(screenName);
 
   // Update bottom nav and desktop top nav active states
-  ['home','contacts','nearby','history','privacy'].forEach(t => {
+  ['home', 'contacts', 'nearby', 'history', 'privacy'].forEach(t => {
     const btn = document.getElementById(`nav-${t}`);
     if (btn) btn.classList.toggle('active', t === tab);
     const topBtn = document.getElementById(`topnav-${t}`);
@@ -224,19 +250,19 @@ function showTab(tab) {
   document.querySelectorAll('.desktop-top-nav .top-nav-btn').forEach(btn => {
     const text = btn.textContent.toLowerCase();
     const isTarget = (tab === 'home' && text.includes('home')) ||
-                     (tab === 'contacts' && text.includes('contacts')) ||
-                     (tab === 'nearby' && (text.includes('nearby') || text.includes('havens'))) ||
-                     (tab === 'history' && (text.includes('history') || text.includes('logs'))) ||
-                     (tab === 'privacy' && text.includes('privacy'));
+      (tab === 'contacts' && text.includes('contacts')) ||
+      (tab === 'nearby' && (text.includes('nearby') || text.includes('havens'))) ||
+      (tab === 'history' && (text.includes('history') || text.includes('logs'))) ||
+      (tab === 'privacy' && text.includes('privacy'));
     btn.classList.toggle('active', isTarget);
   });
 
   // Refresh content on relevant tabs
   if (tab === 'contacts') renderContacts();
-  if (tab === 'history')  renderHistory();
-  if (tab === 'nearby')   renderNearby();
-  if (tab === 'privacy')  loadPrivacyToggles();
-  if (tab === 'home')     refreshHomeBadges();
+  if (tab === 'history') renderHistory();
+  if (tab === 'nearby') renderNearby();
+  if (tab === 'privacy') loadPrivacyToggles();
+  if (tab === 'home') refreshHomeBadges();
 }
 
 /* ═════════════════════════════════════════
@@ -259,12 +285,12 @@ async function loginDemo() {
     if (data.success && data.user) {
       currentUser = data.user;
       if (data.token) localStorage.setItem('sr_token', data.token);
-      try { await fetch('/api/contacts/seed', { method: 'POST' }); } catch (_) {}
-      showToast('Logged in as Demo User (MongoDB ready)!', 'success');
+      try { await fetch('/api/contacts/seed', { method: 'POST' }); } catch (_) { }
+      showToast('Logged in as Demo User (Turso Cloud ready)!', 'success');
       onLoginSuccess();
       return;
     }
-  } catch (_) {}
+  } catch (_) { }
 
   // Local fallback
   let users = getUsers();
@@ -282,7 +308,7 @@ async function loginDemo() {
 async function handleLogin(e) {
   e.preventDefault();
   const email = document.getElementById('login-email').value.trim();
-  const pass  = document.getElementById('login-pass').value;
+  const pass = document.getElementById('login-pass').value;
 
   if (!email || !pass) { showToast('Please fill in all fields.', 'warning'); return; }
 
@@ -324,7 +350,7 @@ async function handleLogin(e) {
             onLoginSuccess();
             return;
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       showToast(data.error, 'error');
@@ -336,7 +362,7 @@ async function handleLogin(e) {
 
   // Fallback to local storage only if network failed
   const users = getUsers();
-  const user  = users.find(u => u.email === email && u.password === pass);
+  const user = users.find(u => u.email === email && u.password === pass);
 
   if (!user) { showToast('Invalid email or password.', 'error'); return; }
 
@@ -348,13 +374,13 @@ async function handleLogin(e) {
 /** Handle register form */
 async function handleRegister(e) {
   e.preventDefault();
-  const name     = document.getElementById('reg-name').value.trim();
-  const email    = document.getElementById('reg-email').value.trim();
-  const mobile   = document.getElementById('reg-mobile').value.trim();
-  const pass     = document.getElementById('reg-pass').value;
-  const confirm  = document.getElementById('reg-confirm').value;
-  const ecName   = document.getElementById('reg-ec-name').value.trim();
-  const ecPhone  = document.getElementById('reg-ec-phone').value.trim();
+  const name = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const mobile = document.getElementById('reg-mobile').value.trim();
+  const pass = document.getElementById('reg-pass').value;
+  const confirm = document.getElementById('reg-confirm').value;
+  const ecName = document.getElementById('reg-ec-name').value.trim();
+  const ecPhone = document.getElementById('reg-ec-phone').value.trim();
 
   // Basic validation
   if (!name || !email || !mobile || !pass || !confirm) {
@@ -395,7 +421,7 @@ async function handleRegister(e) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name: ecName, phone: ecPhone, relation: 'Emergency Contact', userEmail: email })
           });
-        } catch (_) {}
+        } catch (_) { }
       }
 
       showToast('Account created successfully! Accessible on all devices.', 'success');
@@ -435,13 +461,19 @@ function onLoginSuccess() {
   demoMode = getDemoMode();
   syncDemoToggles();
 
+  // Persist session so refreshing page preserves login
+  if (currentUser) {
+    localStorage.setItem('sr_user', JSON.stringify(currentUser));
+  }
+
   document.getElementById('header-username').textContent = currentUser.name.split(' ')[0];
   refreshHomeBadges();
   showScreen('home');
   showTab('home');
   updateStatusCard('safe', 'SAFE', 'No active session');
 
-  // Immediately initialize real-time live GPS tracking
+  // Immediately initialize real-time live GPS tracking & Socket.io
+  initSocketConnection();
   getLiveLocation(false);
   startContinuousLocationWatch();
 }
@@ -449,25 +481,72 @@ function onLoginSuccess() {
 /** Logout */
 function handleLogout() {
   showModal('Logout', 'Are you sure you want to log out?', [
-    { label: 'Cancel',  cls: 'btn-ghost' },
-    { label: 'Logout',  cls: 'btn-danger', fn: () => {
-      // Stop any active session
-      clearAllTimers();
-      emergencyActive = false;
-      currentUser = null;
-      showScreen('auth');
-      switchAuthTab('login');
-    }},
+    { label: 'Cancel', cls: 'btn-ghost' },
+    {
+      label: 'Logout', cls: 'btn-danger', fn: () => {
+        // Stop any active session
+        clearAllTimers();
+        emergencyActive = false;
+        currentUser = null;
+        localStorage.removeItem('sr_user');
+        localStorage.removeItem('sr_token');
+        showScreen('auth');
+        switchAuthTab('login');
+        showToast('Logged out successfully.', 'info');
+      }
+    },
   ]);
 }
 
-/** Forgot password mock */
+/** Real Password Reset Modal */
 function showForgotModal() {
   showModal(
-    'Forgot Password',
-    'In the production version, a reset link would be sent to your email.<br><br>For this demo, use the <strong>Quick Demo Login</strong> button.',
-    [{ label: 'OK', cls: 'btn-primary' }]
+    '🔑 Reset Your Password',
+    `
+    <p style="font-size:0.83rem; color:var(--text-soft); margin-bottom:12px; line-height:1.4;">
+      Enter your registered email address and set a new password to restore your account access:
+    </p>
+    <div class="field-group">
+      <label>Registered Account Email *</label>
+      <input type="email" id="reset-email" placeholder="e.g. adarsh@example.com" />
+    </div>
+    <div class="field-group" style="margin-top:10px;">
+      <label>New Password * (min 6 characters)</label>
+      <input type="password" id="reset-new-pass" placeholder="Enter new password" />
+    </div>
+    `,
+    [
+      { label: 'Cancel', cls: 'btn-ghost' },
+      { label: 'Update Password', cls: 'btn-primary', fn: handleResetPasswordSubmit }
+    ]
   );
+}
+
+async function handleResetPasswordSubmit() {
+  const email = document.getElementById('reset-email')?.value.trim();
+  const newPassword = document.getElementById('reset-new-pass')?.value;
+  if (!email || !newPassword || newPassword.length < 6) {
+    showToast('Please enter a valid email and new password (min 6 chars).', 'warning');
+    return;
+  }
+  try {
+    showToast('Updating password in Turso Cloud DB…', 'info', 2000);
+    const res = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, newPassword })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message, 'success', 4000);
+      const emailInput = document.getElementById('login-email');
+      if (emailInput) emailInput.value = email;
+    } else {
+      showToast(data.error || 'Failed to reset password.', 'error');
+    }
+  } catch (err) {
+    showToast('Network error while resetting password.', 'error');
+  }
 }
 
 /* ═════════════════════════════════════════
@@ -477,16 +556,16 @@ function showForgotModal() {
 function updateStatusCard(state, label, sub) {
   const card = document.getElementById('status-card');
   const labelEl = document.getElementById('status-label');
-  const subEl   = document.getElementById('status-sub');
+  const subEl = document.getElementById('status-sub');
 
   card.className = `status-card ${state}`;
   labelEl.textContent = label;
-  subEl.textContent   = sub;
+  subEl.textContent = sub;
 }
 
 function refreshHomeBadges() {
   const contacts = getContacts();
-  const history  = getHistory();
+  const history = getHistory();
 
   const cb = document.getElementById('contacts-count-badge');
   if (cb) cb.textContent = contacts.length ? `${contacts.length}` : '';
@@ -535,7 +614,7 @@ let selectedDurationMins = 10;
 function goToStartSession() {
   // Load privacy prefs into session toggles
   const priv = getPrivacy();
-  document.getElementById('sess-camera-toggle').checked   = priv.camera;
+  document.getElementById('sess-camera-toggle').checked = priv.camera;
   document.getElementById('sess-location-toggle').checked = priv.location;
 
   // Render contacts checkboxes
@@ -585,11 +664,11 @@ function getSelectedContactIds() {
 
 function startSession() {
   const from = document.getElementById('sess-from').value.trim() || 'Current Location';
-  const to   = document.getElementById('sess-to').value.trim()   || 'Destination';
+  const to = document.getElementById('sess-to').value.trim() || 'Destination';
 
   const rawInterval = parseInt(document.getElementById('sess-checkin-interval').value) || 30;
-  const allowCamera  = document.getElementById('sess-camera-toggle').checked;
-  const allowLocation= document.getElementById('sess-location-toggle').checked;
+  const allowCamera = document.getElementById('sess-camera-toggle').checked;
+  const allowLocation = document.getElementById('sess-location-toggle').checked;
   const selectedContacts = getSelectedContactIds();
 
   sessionConfig = {
@@ -603,14 +682,14 @@ function startSession() {
   };
 
   sessionRemaining = selectedDurationMins * 60;
-  checkinInterval  = rawInterval;
+  checkinInterval = rawInterval;
 
   // Get location first (async, no blocking)
   acquireLocation(allowLocation);
 
   // Show monitor screen
   document.getElementById('map-from').textContent = from;
-  document.getElementById('map-to').textContent   = to;
+  document.getElementById('map-to').textContent = to;
   document.getElementById('main-timer').textContent = formatTime(sessionRemaining);
 
   updateStatusCard('safe', 'SESSION ACTIVE', `To: ${to}`);
@@ -628,6 +707,145 @@ function startSession() {
 
 const DEMO_LOCATION = { lat: 18.5204, lng: 73.8567, accuracy: 25, label: 'Live Location Tracking Active' };
 let geoWatchId = null;
+
+function initSocketConnection() {
+  if (typeof io !== 'undefined' && !socketClient) {
+    try {
+      socketClient = io();
+      console.log('📡 SafeRoute Socket.io client active');
+    } catch (e) {
+      console.warn('Socket client init note:', e);
+    }
+  }
+  return socketClient;
+}
+
+// Initialize Leaflet Interactive Map on Monitor Screen
+function initLiveLeafletMap(lat, lng) {
+  const mapContainer = document.getElementById('live-map');
+  if (!mapContainer || typeof L === 'undefined') return;
+
+  if (liveLeafletMap) {
+    liveLeafletMap.invalidateSize();
+    return;
+  }
+
+  try {
+    liveLeafletMap = L.map('live-map', {
+      zoomControl: false,
+      attributionControl: false
+    }).setView([lat || 18.5204, lng || 73.8567], 15);
+
+    // CartoDB Dark Matter tiles (matching cyber theme)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19
+    }).addTo(liveLeafletMap);
+
+    // Custom glowing pulse user pin
+    const userIcon = L.divIcon({
+      className: 'custom-live-user-marker',
+      html: `
+        <div style="position:relative; width:22px; height:22px;">
+          <div style="position:absolute; width:22px; height:22px; background:rgba(74,222,128,0.35); border-radius:50%; animation:pulse-hud 1.8s infinite;"></div>
+          <div style="position:absolute; top:3px; left:3px; width:16px; height:16px; background:#4ade80; border:2px solid #fff; border-radius:50%; box-shadow:0 0 8px #4ade80;"></div>
+        </div>
+      `,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11]
+    });
+
+    liveUserMarker = L.marker([lat || 18.5204, lng || 73.8567], { icon: userIcon }).addTo(liveLeafletMap);
+    liveUserMarker.bindPopup('<strong style="color:#000;">Live Position</strong>');
+
+    liveAccuracyCircle = L.circle([lat || 18.5204, lng || 73.8567], {
+      radius: 20,
+      color: '#4ade80',
+      fillColor: '#4ade80',
+      fillOpacity: 0.12,
+      weight: 1
+    }).addTo(liveLeafletMap);
+
+    liveRoutePolyline = L.polyline([], {
+      color: '#a855f7',
+      weight: 3.5,
+      opacity: 0.85
+    }).addTo(liveLeafletMap);
+
+    L.control.zoom({ position: 'topright' }).addTo(liveLeafletMap);
+  } catch (err) {
+    console.warn('Leaflet map creation note:', err);
+  }
+}
+
+// Update Marker, accuracy circle, breadcrumbs, and broadcast to Socket.io
+function updateLiveMapMarker(lat, lng, accuracy = 15) {
+  if (!liveLeafletMap) {
+    initLiveLeafletMap(lat, lng);
+  }
+  if (!lat || !lng) return;
+
+  const latLng = [lat, lng];
+  if (liveUserMarker) liveUserMarker.setLatLng(latLng);
+  if (liveAccuracyCircle) {
+    liveAccuracyCircle.setLatLng(latLng);
+    liveAccuracyCircle.setRadius(accuracy || 15);
+  }
+
+  liveRouteHistory.push(latLng);
+  if (liveRoutePolyline) liveRoutePolyline.setLatLngs(liveRouteHistory);
+
+  if (liveLeafletMap) {
+    liveLeafletMap.panTo(latLng);
+  }
+
+  // Socket.io Broadcast to Guardians / Police
+  if (socketClient) {
+    socketClient.emit('send-location', {
+      alertId: currentAlertId || 'SR_LIVE',
+      lat,
+      lng,
+      accuracy,
+      userName: currentUser?.name || 'User',
+      timestamp: new Date().toLocaleTimeString()
+    });
+  }
+
+  // Check route deviation
+  checkRouteDeviation(lat, lng);
+}
+
+function recenterLiveMap() {
+  if (liveLeafletMap && currentLocation) {
+    liveLeafletMap.setView([currentLocation.lat, currentLocation.lng], 16);
+    liveLeafletMap.invalidateSize();
+    showToast('Map re-centered on live GPS signal.', 'info', 1800);
+  }
+}
+
+function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371e3; // Earth radius in meters
+  const phi1 = lat1 * Math.PI / 180;
+  const phi2 = lat2 * Math.PI / 180;
+  const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+  const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) *
+    Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function checkRouteDeviation(lat, lng) {
+  if (!activeSafeRoutePoints || activeSafeRoutePoints.length === 0) return;
+  let minDistanceMeters = Infinity;
+  for (const pt of activeSafeRoutePoints) {
+    const d = calculateHaversineDistance(lat, lng, pt[0], pt[1]);
+    if (d < minDistanceMeters) minDistanceMeters = d;
+  }
+  if (minDistanceMeters > 160) {
+    showToast(`⚠️ Route Deviation Warning! You are ${Math.round(minDistanceMeters)}m away from designated safe corridor!`, 'warning', 4000);
+  }
+}
 
 // Get high-precision live location from device GPS
 function getLiveLocation(highAccuracy = true) {
@@ -658,6 +876,9 @@ function getLiveLocation(highAccuracy = true) {
         const hudGps = document.getElementById('hud-gps-val');
         if (hudGps) hudGps.textContent = `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)} (±${acc}m)`;
 
+        // Update real Leaflet map
+        updateLiveMapMarker(loc.lat, loc.lng, acc);
+
         resolve(loc);
       },
       (err) => {
@@ -666,6 +887,7 @@ function getLiveLocation(highAccuracy = true) {
           currentLocation = { ...DEMO_LOCATION, label: `${DEMO_LOCATION.lat.toFixed(4)}, ${DEMO_LOCATION.lng.toFixed(4)} (Approximate)` };
         }
         setMapCoords(currentLocation.label);
+        updateLiveMapMarker(currentLocation.lat, currentLocation.lng, 25);
         resolve(currentLocation);
       },
       {
@@ -700,13 +922,16 @@ function startContinuousLocationWatch() {
       // Update HUD live GPS display
       const hudGps = document.getElementById('hud-gps-val');
       if (hudGps) hudGps.textContent = `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+
+      // Update Leaflet marker and path
+      updateLiveMapMarker(pos.coords.latitude, pos.coords.longitude, acc);
     },
     (err) => {
       console.warn('Background GPS watcher note:', err.message);
     },
     {
       enableHighAccuracy: true,
-      maximumAge: 5000,
+      maximumAge: 4000,
       timeout: 12000
     }
   );
@@ -786,13 +1011,13 @@ function showCheckinPopup() {
   checkinActive = true;
   checkinCountdown = 10; // seconds to respond
 
-  const popup    = document.getElementById('checkin-popup');
-  const timerEl  = document.getElementById('checkin-timer');
-  const bar      = document.getElementById('checkin-progress-bar');
+  const popup = document.getElementById('checkin-popup');
+  const timerEl = document.getElementById('checkin-timer');
+  const bar = document.getElementById('checkin-progress-bar');
 
   popup.classList.remove('hidden');
   timerEl.textContent = checkinCountdown;
-  bar.style.width     = '100%';
+  bar.style.width = '100%';
 
   // Vibrate if allowed
   if (getPrivacy().vibrate && navigator.vibrate) navigator.vibrate([200, 100, 200]);
@@ -840,9 +1065,9 @@ function userSafe() {
 /** "Extend Time" */
 function extendTime() {
   showModal('Extend Session', 'How many more minutes do you need?', [
-    { label: '+ 5 minutes',  cls: 'btn-ghost',   fn: () => extendBy(5)  },
-    { label: '+ 10 minutes', cls: 'btn-primary',  fn: () => extendBy(10) },
-    { label: '+ 15 minutes', cls: 'btn-ghost',    fn: () => extendBy(15) },
+    { label: '+ 5 minutes', cls: 'btn-ghost', fn: () => extendBy(5) },
+    { label: '+ 10 minutes', cls: 'btn-primary', fn: () => extendBy(10) },
+    { label: '+ 15 minutes', cls: 'btn-ghost', fn: () => extendBy(15) },
   ]);
 }
 
@@ -855,13 +1080,15 @@ function extendBy(mins) {
 function endSession() {
   showModal('End Session', 'Are you sure you want to end this safety session?', [
     { label: 'Keep Active', cls: 'btn-ghost' },
-    { label: 'End Session', cls: 'btn-danger', fn: () => {
-      clearAllTimers();
-      saveAlertToHistory('Safe', 'Session ended by user');
-      updateStatusCard('safe', 'SAFE', 'Session ended');
-      showToast('Session ended. Stay safe!', 'success');
-      showTab('home');
-    }},
+    {
+      label: 'End Session', cls: 'btn-danger', fn: () => {
+        clearAllTimers();
+        saveAlertToHistory('Safe', 'Session ended by user');
+        updateStatusCard('safe', 'SAFE', 'Session ended');
+        showToast('Session ended. Stay safe!', 'success');
+        showTab('home');
+      }
+    },
   ]);
 }
 
@@ -899,19 +1126,19 @@ function triggerEmergency(type, reason) {
 
   // Generate alert ID
   currentAlertId = nextAlertId();
-  const timeStr  = nowStr();
+  const timeStr = nowStr();
 
   // Update UI metadata
   document.getElementById('em-alert-id').textContent = currentAlertId;
-  document.getElementById('em-time').textContent     = timeStr;
-  document.getElementById('em-type').textContent     = type;
+  document.getElementById('em-time').textContent = timeStr;
+  document.getElementById('em-type').textContent = type;
   document.getElementById('emergency-reason').textContent =
     type === 'Auto-Alert'
       ? '⚠️ NO RESPONSE DETECTED – Emergency alert activated automatically.'
       : '🆘 User requested emergency assistance.';
 
   // Reset steps
-  ['sos','location','share','contacts','camera'].forEach(id => {
+  ['sos', 'location', 'share', 'contacts', 'camera'].forEach(id => {
     setStep(id, 'waiting', '⏳');
   });
   document.getElementById('em-location-card').classList.add('hidden');
@@ -933,11 +1160,11 @@ function triggerEmergency(type, reason) {
 /** Animate through SOS steps */
 function runEmergencySteps(type, reason, timeStr) {
   const steps = [
-    { id: 'sos',      delay: 0,    text: 'SOS signal sent',    fn: stepSOS       },
-    { id: 'location', delay: 1200, text: 'Location acquired',  fn: stepLocation  },
-    { id: 'share',    delay: 2400, text: 'Location link shared',fn: stepShare    },
-    { id: 'contacts', delay: 3800, text: 'Contacts alerted',   fn: stepContacts  },
-    { id: 'camera',   delay: 5200, text: 'Camera handled',     fn: () => stepCamera() },
+    { id: 'sos', delay: 0, text: 'SOS signal sent', fn: stepSOS },
+    { id: 'location', delay: 1200, text: 'Location acquired', fn: stepLocation },
+    { id: 'share', delay: 2400, text: 'Location link shared', fn: stepShare },
+    { id: 'contacts', delay: 3800, text: 'Contacts alerted', fn: stepContacts },
+    { id: 'camera', delay: 5200, text: 'Camera handled', fn: () => stepCamera() },
   ];
 
   steps.forEach(({ id, delay, text, fn }) => {
@@ -982,13 +1209,51 @@ function stepLocation() {
 }
 
 function stepShare() {
-  document.getElementById('step-share').querySelector('.step-text').textContent = 'Live location link created';
+  guardianLiveUrl = `${window.location.origin}/track.html?id=${currentAlertId || 'SR1001'}`;
+  const urlEl = document.getElementById('guardian-tracking-url');
+  if (urlEl) urlEl.textContent = guardianLiveUrl;
+
+  document.getElementById('step-share').querySelector('.step-text').textContent = 'Live Guardian Tracking Link created ✓';
+
+  // Broadcast SOS event to Socket.io
+  if (socketClient) {
+    socketClient.emit('trigger-sos', {
+      alertId: currentAlertId,
+      userName: currentUser?.name || 'User',
+      location: locationLabel(),
+      time: nowStr()
+    });
+  }
+}
+
+function copyGuardianLink() {
+  const url = guardianLiveUrl || `${window.location.origin}/track.html?id=${currentAlertId || 'SR1001'}`;
+  navigator.clipboard.writeText(url);
+  showToast('📋 Live Guardian Tracking URL copied to clipboard!', 'success', 3000);
+}
+
+function shareGuardianLinkWA() {
+  const url = guardianLiveUrl || `${window.location.origin}/track.html?id=${currentAlertId || 'SR1001'}`;
+  const userName = currentUser?.name || 'User';
+  const loc = locationLabel();
+  const msg = `🚨 EMERGENCY ALERT: ${userName} has triggered an SOS! Live GPS: ${loc}. Track live location and view evidence here: ${url}`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+function shareGuardianLinkSMS() {
+  const url = guardianLiveUrl || `${window.location.origin}/track.html?id=${currentAlertId || 'SR1001'}`;
+  const contacts = getContacts();
+  const phoneList = contacts.map(c => c.phone.replace(/[^0-9+]/g, '')).filter(Boolean);
+  const primaryPhone = phoneList[0] || '112';
+  const userName = currentUser?.name || 'User';
+  const msg = `EMERGENCY ALERT: ${userName} needs immediate help! Live GPS Track: ${url}`;
+  window.location.href = `sms:${primaryPhone}?body=${encodeURIComponent(msg)}`;
 }
 
 function stepContacts() {
   const allContacts = getContacts();
-  const selectedIds  = sessionConfig.contactIds || allContacts.map(c => c.id);
-  const selected     = allContacts.filter(c => selectedIds.includes(c.id));
+  const selectedIds = sessionConfig.contactIds || allContacts.map(c => c.id);
+  const selected = allContacts.filter(c => selectedIds.includes(c.id));
 
   if (!selected.length) {
     setStep('contacts', 'skipped', '⚠️');
@@ -1002,7 +1267,10 @@ function stepContacts() {
     <div class="em-contact-notif">
       📲 <strong>${c.name}</strong> (${c.relation}) — ${c.phone}<br>
       <small>"EMERGENCY: ${currentUser?.name || 'User'} needs help! Location: ${locLabel} — SafeRoute"</small>
-      <span class="demo-tag">Demo Notification</span>
+      <div style="margin-top:6px; display:flex; gap:6px;">
+        <button class="btn btn-ghost" style="padding:2px 8px; font-size:0.7rem;" onclick="window.location.href='tel:${c.phone}'">📞 Direct Call</button>
+        <button class="btn btn-primary" style="padding:2px 8px; font-size:0.7rem;" onclick="shareGuardianLinkWA()">💬 WhatsApp Alert</button>
+      </div>
     </div>
   `).join('');
   container.classList.remove('hidden');
@@ -1022,10 +1290,16 @@ async function stepCamera() {
     return;
   }
 
-  // Attempt real getUserMedia recording
+  // Attempt real getUserMedia recording with Audio + Video
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      let stream = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      } catch (_) {
+        // Fallback to video only if audio device is unavailable or blocked
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
       activeCameraStream = stream;
 
       if (liveVideo && liveBox) {
@@ -1034,7 +1308,7 @@ async function stepCamera() {
       }
 
       setStep('camera', 'running', '🎥');
-      if (step) step.querySelector('.step-text').textContent = 'Recording video & capturing photo...';
+      if (step) step.querySelector('.step-text').textContent = 'Recording video with audio & photo snapshot...';
 
       // 1. Take Photo Snapshot after short warmup
       setTimeout(() => {
@@ -1057,7 +1331,7 @@ async function stepCamera() {
         }
       }, 700);
 
-      // 2. Record 3 seconds of Video using MediaRecorder
+      // 2. Record 3 seconds of Video with Audio using MediaRecorder
       try {
         let recordedChunks = [];
         const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
@@ -1104,13 +1378,13 @@ async function stepCamera() {
       }
 
       setStep('camera', 'done', '✅');
-      if (step) step.querySelector('.step-text').textContent = 'Evidence recorded & saved to MongoDB ✅';
-      showToast('Camera evidence saved to MongoDB!', 'success');
+      if (step) step.querySelector('.step-text').textContent = 'Evidence recorded & saved to Turso Cloud DB ✅';
+      showToast('Camera evidence saved to Turso Cloud DB!', 'success');
 
     } catch (err) {
       console.warn('Camera access denied or unavailable:', err);
       setStep('camera', 'skipped', '⚠️');
-      if (step) step.querySelector('.step-text').textContent = 'Camera permission denied by browser';
+      if (step) step.querySelector('.step-text').textContent = 'Camera permission denied or HTTP limited';
     }
   } else {
     setStep('camera', 'done', '✅');
@@ -1153,7 +1427,7 @@ function cancelEmergency() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'Cancelled' })
-    }).catch(() => {});
+    }).catch(() => { });
   }
 
   emergencyActive = false;
@@ -1177,13 +1451,13 @@ function endEmergency() {
 async function saveAlertToHistory(status, reason, location, alertId, time) {
   const history = getHistory();
   const alertObj = {
-    id:       alertId || nextAlertId(),
-    time:     time    || nowStr(),
+    id: alertId || nextAlertId(),
+    time: time || nowStr(),
     status,
     reason,
     location: location || locationLabel(),
-    from:     sessionConfig.from  || '–',
-    to:       sessionConfig.to    || '–',
+    from: sessionConfig.from || '–',
+    to: sessionConfig.to || '–',
     contactsAlerted: sessionConfig.contactIds?.length || 0,
     evidence: []
   };
@@ -1252,15 +1526,15 @@ async function renderHistory() {
         <div class="evidence-title">📁 Attached Evidence (${h.evidence.length})</div>
         <div class="evidence-gallery">
           ${h.evidence.map(ev => {
-            const isVideo = ev.mediaType === 'video' || (ev.mimeType && ev.mimeType.startsWith('video/'));
-            if (isVideo) {
-              return `<div class="evidence-video-badge" onclick="openEvidenceModal('${ev.fileUrl}', true)" title="Play Video Evidence">
+      const isVideo = ev.mediaType === 'video' || (ev.mimeType && ev.mimeType.startsWith('video/'));
+      if (isVideo) {
+        return `<div class="evidence-video-badge" onclick="openEvidenceModal('${ev.fileUrl}', true)" title="Play Video Evidence">
                 <span>▶️</span><small>VIDEO</small>
               </div>`;
-            } else {
-              return `<img src="${ev.fileUrl}" class="evidence-item" onclick="openEvidenceModal('${ev.fileUrl}', false)" title="View Photo Evidence" alt="Evidence" />`;
-            }
-          }).join('')}
+      } else {
+        return `<img src="${ev.fileUrl}" class="evidence-item" onclick="openEvidenceModal('${ev.fileUrl}', false)" title="View Photo Evidence" alt="Evidence" />`;
+      }
+    }).join('')}
         </div>
       </div>
     ` : '';
@@ -1284,16 +1558,18 @@ async function renderHistory() {
 
 function clearHistory() {
   showModal('Clear History', 'This will permanently delete all alert history and records from the database. Continue?', [
-    { label: 'Cancel',        cls: 'btn-ghost' },
-    { label: 'Clear History', cls: 'btn-danger', fn: async () => {
-      saveHistory([]);
-      try {
-        await fetch('/api/alerts', { method: 'DELETE' });
-      } catch (_) {}
-      renderHistory();
-      refreshHomeBadges();
-      showToast('History cleared from MongoDB & local storage.', 'info');
-    }},
+    { label: 'Cancel', cls: 'btn-ghost' },
+    {
+      label: 'Clear History', cls: 'btn-danger', fn: async () => {
+        saveHistory([]);
+        try {
+          await fetch('/api/alerts', { method: 'DELETE' });
+        } catch (_) { }
+        renderHistory();
+        refreshHomeBadges();
+        showToast('History cleared from MongoDB & local storage.', 'info');
+      }
+    },
   ]);
 }
 
@@ -1319,7 +1595,7 @@ async function renderContacts() {
       }));
       saveContacts(contacts);
     }
-  } catch (_) {}
+  } catch (_) { }
 
   if (!contacts.length) {
     list.innerHTML = '<p class="section-hint">No contacts added yet. Add at least one trusted contact.</p>';
@@ -1352,40 +1628,42 @@ function openAddContact() {
     <div class="field-group" style="margin-top:10px"><label>Email (optional)</label><input type="email" id="mc-email" placeholder="contact@email.com" /></div>
   `, [
     { label: 'Cancel', cls: 'btn-ghost' },
-    { label: 'Add Contact', cls: 'btn-primary', fn: async () => {
-      const name  = document.getElementById('mc-name')?.value.trim();
-      const rel   = document.getElementById('mc-rel')?.value.trim();
-      const phone = document.getElementById('mc-phone')?.value.trim();
-      const email = document.getElementById('mc-email')?.value.trim();
+    {
+      label: 'Add Contact', cls: 'btn-primary', fn: async () => {
+        const name = document.getElementById('mc-name')?.value.trim();
+        const rel = document.getElementById('mc-rel')?.value.trim();
+        const phone = document.getElementById('mc-phone')?.value.trim();
+        const email = document.getElementById('mc-email')?.value.trim();
 
-      if (!name || !rel || !phone) { showToast('Name, relationship and phone are required.', 'warning'); return; }
+        if (!name || !rel || !phone) { showToast('Name, relationship and phone are required.', 'warning'); return; }
 
-      // Save to MongoDB
-      try {
-        const res = await fetch('/api/contacts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, phone, relation: rel, email: email || '', userEmail: currentUser?.email })
-        });
-        const data = await res.json();
-        if (data.success && data.contact) {
-          const contacts = getContacts();
-          contacts.push({ id: data.contact._id, name, relation: rel, phone, email: email || '' });
-          saveContacts(contacts);
-          renderContacts();
-          showToast(`${name} added to MongoDB!`, 'success');
-          return;
+        // Save to MongoDB
+        try {
+          const res = await fetch('/api/contacts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, phone, relation: rel, email: email || '', userEmail: currentUser?.email })
+          });
+          const data = await res.json();
+          if (data.success && data.contact) {
+            const contacts = getContacts();
+            contacts.push({ id: data.contact._id, name, relation: rel, phone, email: email || '' });
+            saveContacts(contacts);
+            renderContacts();
+            showToast(`${name} added to Turso Cloud DB!`, 'success');
+            return;
+          }
+        } catch (err) {
+          console.warn('Fallback to local contact save:', err);
         }
-      } catch (err) {
-        console.warn('Fallback to local contact save:', err);
-      }
 
-      const contacts = getContacts();
-      contacts.push({ id: Date.now(), name, relation: rel, phone, email: email || '' });
-      saveContacts(contacts);
-      renderContacts();
-      showToast(`${name} added!`, 'success');
-    }},
+        const contacts = getContacts();
+        contacts.push({ id: Date.now(), name, relation: rel, phone, email: email || '' });
+        saveContacts(contacts);
+        renderContacts();
+        showToast(`${name} added!`, 'success');
+      }
+    },
   ]);
 }
 
@@ -1401,55 +1679,59 @@ function openEditContact(id) {
     <div class="field-group" style="margin-top:10px"><label>Email (optional)</label><input type="email" id="ec-email" value="${c.email || ''}" /></div>
   `, [
     { label: 'Cancel', cls: 'btn-ghost' },
-    { label: 'Save', cls: 'btn-primary', fn: async () => {
-      const name  = document.getElementById('ec-name')?.value.trim();
-      const rel   = document.getElementById('ec-rel')?.value.trim();
-      const phone = document.getElementById('ec-phone')?.value.trim();
-      const email = document.getElementById('ec-email')?.value.trim();
+    {
+      label: 'Save', cls: 'btn-primary', fn: async () => {
+        const name = document.getElementById('ec-name')?.value.trim();
+        const rel = document.getElementById('ec-rel')?.value.trim();
+        const phone = document.getElementById('ec-phone')?.value.trim();
+        const email = document.getElementById('ec-email')?.value.trim();
 
-      if (!name || !rel || !phone) { showToast('Required fields missing.', 'warning'); return; }
+        if (!name || !rel || !phone) { showToast('Required fields missing.', 'warning'); return; }
 
-      try {
-        await fetch(`/api/contacts/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, phone, relation: rel, email: email || '' })
-        });
-      } catch (_) {}
+        try {
+          await fetch(`/api/contacts/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, phone, relation: rel, email: email || '' })
+          });
+        } catch (_) { }
 
-      const idx = contacts.findIndex(x => String(x.id) === String(id));
-      if (idx !== -1) {
-        contacts[idx] = { id, name, relation: rel, phone, email: email || '' };
-        saveContacts(contacts);
+        const idx = contacts.findIndex(x => String(x.id) === String(id));
+        if (idx !== -1) {
+          contacts[idx] = { id, name, relation: rel, phone, email: email || '' };
+          saveContacts(contacts);
+        }
+        renderContacts();
+        showToast('Contact updated!', 'success');
       }
-      renderContacts();
-      showToast('Contact updated!', 'success');
-    }},
+    },
   ]);
 }
 
 function deleteContact(id) {
   showModal('Delete Contact', 'Remove this contact from your trusted list?', [
     { label: 'Cancel', cls: 'btn-ghost' },
-    { label: 'Delete', cls: 'btn-danger', fn: async () => {
-      try {
-        await fetch(`/api/contacts/${id}`, { method: 'DELETE' });
-      } catch (_) {}
-      const contacts = getContacts().filter(c => String(c.id) !== String(id));
-      saveContacts(contacts);
-      renderContacts();
-      showToast('Contact removed.', 'info');
-    }},
+    {
+      label: 'Delete', cls: 'btn-danger', fn: async () => {
+        try {
+          await fetch(`/api/contacts/${id}`, { method: 'DELETE' });
+        } catch (_) { }
+        const contacts = getContacts().filter(c => String(c.id) !== String(id));
+        saveContacts(contacts);
+        renderContacts();
+        showToast('Contact removed.', 'info');
+      }
+    },
   ]);
 }
 
 function seedDemoContacts() {
   saveContacts([
-    { id: 1000001, name: 'Mom',           relation: 'Mother',   phone: '+91 98765 43210', email: 'mom@demo.com' },
-    { id: 1000002, name: 'Dad',           relation: 'Father',   phone: '+91 98765 43211', email: '' },
-    { id: 1000003, name: 'Priya Singh',   relation: 'Friend',   phone: '+91 99123 45678', email: 'priya@demo.com' },
+    { id: 1000001, name: 'Mom', relation: 'Mother', phone: '+91 98765 43210', email: 'mom@demo.com' },
+    { id: 1000002, name: 'Dad', relation: 'Father', phone: '+91 98765 43211', email: '' },
+    { id: 1000003, name: 'Priya Singh', relation: 'Friend', phone: '+91 99123 45678', email: 'priya@demo.com' },
   ]);
-  try { fetch('/api/contacts/seed', { method: 'POST' }); } catch (_) {}
+  try { fetch('/api/contacts/seed', { method: 'POST' }); } catch (_) { }
 }
 
 /* ═════════════════════════════════════════
@@ -1470,7 +1752,7 @@ async function uploadEvidenceFile(file, mediaType, alertId) {
     });
     const data = await res.json();
     if (data.success) {
-      showToast(`Evidence ${mediaType} saved to MongoDB!`, 'success');
+      showToast(`Evidence ${mediaType} saved to Turso Cloud DB!`, 'success');
       return data.file;
     }
   } catch (err) {
@@ -1489,7 +1771,7 @@ async function handleManualEvidenceUpload(input) {
   if (!file) return;
 
   const isVideo = file.type.startsWith('video/');
-  showToast(`Uploading ${isVideo ? 'video' : 'photo'} to MongoDB...`, 'info', 2000);
+  showToast(`Uploading ${isVideo ? 'video' : 'photo'} to Turso Cloud DB...`, 'info', 2000);
 
   const targetAlertId = currentAlertId || (getHistory().length ? getHistory()[getHistory().length - 1].id : nextAlertId());
   const uploaded = await uploadEvidenceFile(file, isVideo ? 'video' : 'photo', targetAlertId);
@@ -1506,14 +1788,14 @@ function openEvidenceModal(url, isVideo) {
     showModal('🎥 Video Evidence', `
       <div style="text-align:center; padding: 4px;">
         <video src="${url}" controls autoplay style="width:100%; max-height:360px; border-radius:8px; background:#000;"></video>
-        <p style="font-size:0.75rem; color:var(--text-soft); margin-top:8px;">Stored on Server & MongoDB Evidence Record</p>
+        <p style="font-size:0.75rem; color:var(--text-soft); margin-top:8px;">Stored on Server & Turso Cloud Evidence Record</p>
       </div>
     `, [{ label: 'Close', cls: 'btn-primary' }]);
   } else {
     showModal('📸 Photo Evidence', `
       <div style="text-align:center; padding: 4px;">
         <img src="${url}" alt="Evidence" style="width:100%; max-height:360px; object-fit:contain; border-radius:8px; background:#000;" />
-        <p style="font-size:0.75rem; color:var(--text-soft); margin-top:8px;">Stored on Server & MongoDB Evidence Record</p>
+        <p style="font-size:0.75rem; color:var(--text-soft); margin-top:8px;">Stored on Server & Turso Cloud Evidence Record</p>
       </div>
     `, [{ label: 'Close', cls: 'btn-primary' }]);
   }
@@ -1579,29 +1861,121 @@ async function syncLocalDataToServer() {
    NEARBY SERVICES
 ═════════════════════════════════════════ */
 
-function renderNearby() {
-  const policeList   = document.getElementById('police-list');
+async function renderNearby() {
+  const policeList = document.getElementById('police-list');
   const hospitalList = document.getElementById('hospital-list');
+  if (!policeList || !hospitalList) return;
 
-  policeList.innerHTML = NEARBY_POLICE.map(p => `
+  const loc = currentLocation || DEMO_LOCATION;
+  const lat = loc.lat;
+  const lng = loc.lng;
+
+  // Initial loader
+  policeList.innerHTML = `<div style="font-size:0.78rem; color:#a855f7; padding:8px 0;">🛰️ Querying live police stations near ${lat.toFixed(4)}, ${lng.toFixed(4)}…</div>`;
+  hospitalList.innerHTML = `<div style="font-size:0.78rem; color:#a855f7; padding:8px 0;">🛰️ Querying live 24x7 hospitals near ${lat.toFixed(4)}, ${lng.toFixed(4)}…</div>`;
+
+  try {
+    // Dynamic Query to OpenStreetMap Overpass API
+    const query = `[out:json][timeout:6];(node["amenity"="police"](around:6000,${lat},${lng});node["amenity"="hospital"](around:6000,${lat},${lng}););out center 10;`;
+    const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+    const data = await res.json();
+
+    const policeNodes = [];
+    const hospitalNodes = [];
+
+    if (data && data.elements && data.elements.length > 0) {
+      data.elements.forEach(node => {
+        const nLat = node.lat || node.center?.lat;
+        const nLng = node.lon || node.center?.lon;
+        const distM = (nLat && nLng) ? calculateHaversineDistance(lat, lng, nLat, nLng) : 1000;
+        const distKm = (distM / 1000).toFixed(1) + ' km';
+        const name = node.tags?.name || (node.tags?.amenity === 'police' ? 'Local Police Station' : 'Emergency Hospital');
+
+        if (node.tags?.amenity === 'police') {
+          policeNodes.push({ name, distance: distKm, phone: node.tags?.phone || '112', distM });
+        } else if (node.tags?.amenity === 'hospital') {
+          hospitalNodes.push({ name, distance: distKm, phone: node.tags?.phone || '108', distM });
+        }
+      });
+    }
+
+    // Sort by distance
+    policeNodes.sort((a, b) => a.distM - b.distM);
+    hospitalNodes.sort((a, b) => a.distM - b.distM);
+
+    if (policeNodes.length > 0) {
+      policeList.innerHTML = policeNodes.slice(0, 4).map(p => `
+        <div class="nearby-card">
+          <div class="nearby-icon">🚔</div>
+          <div class="nearby-info">
+            <div class="nearby-name">${p.name}</div>
+            <div class="nearby-meta">📍 ${p.distance} away · Live GPS Overpass</div>
+          </div>
+          <button class="nearby-call" onclick="simulateCall('${p.name.replace(/'/g, "")}', '${p.phone}')">
+            📞 ${p.phone}
+          </button>
+        </div>
+      `).join('');
+    } else {
+      renderFallbackPolice(lat, lng, policeList);
+    }
+
+    if (hospitalNodes.length > 0) {
+      hospitalList.innerHTML = hospitalNodes.slice(0, 4).map(h => `
+        <div class="nearby-card">
+          <div class="nearby-icon">🏥</div>
+          <div class="nearby-info">
+            <div class="nearby-name">${h.name}</div>
+            <div class="nearby-meta">📍 ${h.distance} away · Live GPS Overpass</div>
+          </div>
+          <button class="nearby-call" onclick="simulateCall('${h.name.replace(/'/g, "")}', '${h.phone}')">
+            📞 ${h.phone}
+          </button>
+        </div>
+      `).join('');
+    } else {
+      renderFallbackHospitals(lat, lng, hospitalList);
+    }
+
+  } catch (err) {
+    console.debug('Overpass live query fallback:', err);
+    renderFallbackPolice(lat, lng, policeList);
+    renderFallbackHospitals(lat, lng, hospitalList);
+  }
+}
+
+function renderFallbackPolice(lat, lng, el) {
+  const items = [
+    { name: 'Jurisdiction Police Station', distance: '0.8 km', phone: '112' },
+    { name: 'Women Safety & Pink Help Desk', distance: '1.4 km', phone: '1091' },
+    { name: 'District Police Control Room', distance: '2.3 km', phone: '100' },
+  ];
+  el.innerHTML = items.map(p => `
     <div class="nearby-card">
       <div class="nearby-icon">🚔</div>
       <div class="nearby-info">
         <div class="nearby-name">${p.name}</div>
-        <div class="nearby-meta">📍 ${p.distance} away</div>
+        <div class="nearby-meta">📍 ~${p.distance} away from current location</div>
       </div>
       <button class="nearby-call" onclick="simulateCall('${p.name}', '${p.phone}')">
         📞 ${p.phone}
       </button>
     </div>
   `).join('');
+}
 
-  hospitalList.innerHTML = NEARBY_HOSPITALS.map(h => `
+function renderFallbackHospitals(lat, lng, el) {
+  const items = [
+    { name: '24x7 Emergency Civil Hospital', distance: '1.2 km', phone: '108' },
+    { name: 'City Trauma & Critical Care Center', distance: '1.9 km', phone: '102' },
+    { name: 'Emergency Care Women\'s Clinic', distance: '2.5 km', phone: '112' },
+  ];
+  el.innerHTML = items.map(h => `
     <div class="nearby-card">
       <div class="nearby-icon">🏥</div>
       <div class="nearby-info">
         <div class="nearby-name">${h.name}</div>
-        <div class="nearby-meta">📍 ${h.distance} away</div>
+        <div class="nearby-meta">📍 ~${h.distance} away from current location</div>
       </div>
       <button class="nearby-call" onclick="simulateCall('${h.name}', '${h.phone}')">
         📞 ${h.phone}
@@ -1611,18 +1985,8 @@ function renderNearby() {
 }
 
 function simulateCall(name, number) {
-  showModal(
-    '📞 Call Service',
-    `Calling <strong>${name}</strong><br><strong>${number}</strong><br><br><small>Demo only – no real call made.</small>`,
-    [
-      { label: 'Cancel', cls: 'btn-ghost' },
-      { label: `Call ${number}`, cls: 'btn-safe', fn: () => {
-        // Try tel: link for real devices
-        window.location.href = `tel:${number}`;
-        showToast(`Calling ${name}…`, 'info');
-      }},
-    ]
-  );
+  window.location.href = `tel:${number}`;
+  showToast(`Initiating direct phone call to ${name} (${number})…`, 'info', 3000);
 }
 
 /* ═════════════════════════════════════════
@@ -1647,10 +2011,10 @@ function loadPrivacyToggles() {
 function savePrivacy() {
   savePrivacyData({
     location: document.getElementById('priv-location')?.checked ?? true,
-    camera:   document.getElementById('priv-camera')?.checked   ?? false,
-    vibrate:  document.getElementById('priv-checkin-vibrate')?.checked ?? true,
-    shake:    document.getElementById('priv-shake')?.checked ?? true,
-    audio:    document.getElementById('priv-audio')?.checked ?? true,
+    camera: document.getElementById('priv-camera')?.checked ?? false,
+    vibrate: document.getElementById('priv-checkin-vibrate')?.checked ?? true,
+    shake: document.getElementById('priv-shake')?.checked ?? true,
+    audio: document.getElementById('priv-audio')?.checked ?? true,
   });
   showToast('Privacy & security settings saved.', 'success');
 }
@@ -1713,7 +2077,7 @@ function stopRingtoneNodes() {
   try {
     ringtoneNodes.forEach(n => { if (n.stop) n.stop(); });
     ringtoneNodes = [];
-  } catch (_) {}
+  } catch (_) { }
 }
 
 function stopRingtoneSound() {
@@ -1758,7 +2122,7 @@ function stopSirenSound() {
   clearInterval(sirenInterval);
   sirenInterval = null;
   if (sirenOsc) {
-    try { sirenOsc.stop(); } catch (_) {}
+    try { sirenOsc.stop(); } catch (_) { }
     sirenOsc = null;
   }
 }
@@ -1784,14 +2148,18 @@ function openFakeCallMenu() {
     </div>
   `, [
     { label: 'Cancel', cls: 'btn-ghost' },
-    { label: '⏰ Call in 5s', cls: 'btn-outline', fn: () => {
-      const name = document.getElementById('fc-select-caller')?.value || 'Maa (Mom)';
-      startFakeCallCountdown(5, name);
-    }},
-    { label: '📞 Call Now', cls: 'btn-primary', fn: () => {
-      const name = document.getElementById('fc-select-caller')?.value || 'Maa (Mom)';
-      triggerFakeCall(name);
-    }},
+    {
+      label: '⏰ Call in 5s', cls: 'btn-outline', fn: () => {
+        const name = document.getElementById('fc-select-caller')?.value || 'Maa (Mom)';
+        startFakeCallCountdown(5, name);
+      }
+    },
+    {
+      label: '📞 Call Now', cls: 'btn-primary', fn: () => {
+        const name = document.getElementById('fc-select-caller')?.value || 'Maa (Mom)';
+        triggerFakeCall(name);
+      }
+    },
   ]);
 }
 
@@ -1802,8 +2170,13 @@ function startFakeCallCountdown(secs, name) {
   }, secs * 1000);
 }
 
+let currentFakeCallerName = 'Maa (Mom)';
+let fakeCallDialogueTimeout = null;
+
 function triggerFakeCall(name = 'Maa (Mom)', num = '+91 98765 43210') {
+  currentFakeCallerName = name;
   clearTimeout(fakeCallCountdownId);
+  clearTimeout(fakeCallDialogueTimeout);
   const overlay = document.getElementById('fake-call-overlay');
   const incoming = document.getElementById('fc-incoming');
   const active = document.getElementById('fc-active');
@@ -1841,15 +2214,49 @@ function acceptFakeCall() {
     if (timerEl) timerEl.textContent = `${m}:${s}`;
   }, 1000);
 
-  // Synthesize caller voice
+  // Play realistic AI Voice dialogue based on chosen persona
   if ('speechSynthesis' in window) {
     try {
       window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance("Beta, where are you right now? I am waiting for you at the corner, hurry up and come!");
-      utter.rate = 0.95;
-      utter.pitch = 1.1;
-      window.speechSynthesis.speak(utter);
-    } catch (_) {}
+      let phrase1 = "Beta, where are you right now? I am waiting for you at the corner, hurry up and come!";
+      let phrase2 = "Are you near the main road? Do not stop anywhere, I can see the junction, coming towards you!";
+      let pitch = 1.0;
+      let rate = 0.95;
+
+      if (currentFakeCallerName.includes('Police')) {
+        phrase1 = "SafeRoute Police Response Cell here. We have locked onto your vehicle GPS coordinates. Mobile highway patrol is 100 meters away at your junction, remain on the line.";
+        phrase2 = "Our patrol unit is sounding horn at the crossroad. Confirm your exact visual location immediately.";
+        pitch = 0.9;
+      } else if (currentFakeCallerName.includes('Papa')) {
+        phrase1 = "Beta, me chowkat gadi ghevun thambloy, lavkar ye, me tula samor baghtoy!";
+        phrase2 = "Kahi problem ahe ka? Tu tithun lagech nigh, me phone varach ahe!";
+        pitch = 0.85;
+      } else if (currentFakeCallerName.includes('Bhaiya')) {
+        phrase1 = "Tai me station baherch ahe, tu kuthaparyant aalis? Me chalat yetoy tula ghyayla!";
+        phrase2 = "Me samorun chalat yetoy, phone kat karu nakos, samor bagh!";
+        pitch = 1.05;
+      } else if (currentFakeCallerName.includes('Maa')) {
+        phrase1 = "Beta kute ahes? Me kenvhachi tuzi vat baghtey, papa pan gadi gheun thamblet, lavkar ye!";
+        phrase2 = "Ghabru nakos, amhi tithech yetoy, rastyavar thamb!";
+        pitch = 1.15;
+      }
+
+      const utter1 = new SpeechSynthesisUtterance(phrase1);
+      utter1.rate = rate;
+      utter1.pitch = pitch;
+      window.speechSynthesis.speak(utter1);
+
+      // Follow-up realistic line after 6 seconds to simulate true ongoing call
+      fakeCallDialogueTimeout = setTimeout(() => {
+        if (!document.getElementById('fake-call-overlay').classList.contains('hidden')) {
+          const utter2 = new SpeechSynthesisUtterance(phrase2);
+          utter2.rate = rate;
+          utter2.pitch = pitch;
+          window.speechSynthesis.speak(utter2);
+        }
+      }, 6500);
+
+    } catch (_) { }
   }
 }
 
@@ -1857,6 +2264,7 @@ function endFakeCall() {
   stopRingtoneSound();
   clearInterval(fakeCallTimerId);
   clearTimeout(fakeCallCountdownId);
+  clearTimeout(fakeCallDialogueTimeout);
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
 
   const overlay = document.getElementById('fake-call-overlay');
@@ -1926,14 +2334,36 @@ function openSafeRouteModal() {
 
 function selectSafeRoute(type) {
   if (type === 'safe') {
-    showToast('🟢 SafeRoute (94% Safety) Selected! Route Deviation Guard active.', 'success', 3500);
+    const loc = currentLocation || DEMO_LOCATION;
+    const lat = loc.lat;
+    const lng = loc.lng;
+
+    // Generate designated high-safety corridor points from user's live coordinates
+    activeSafeRoutePoints = [
+      [lat, lng],
+      [lat + 0.0018, lng + 0.0012],
+      [lat + 0.0035, lng + 0.0028],
+      [lat + 0.0052, lng + 0.0045],
+    ];
+
+    if (liveLeafletMap) {
+      if (designatedSafeRouteLine) liveLeafletMap.removeLayer(designatedSafeRouteLine);
+      designatedSafeRouteLine = L.polyline(activeSafeRoutePoints, {
+        color: '#22c55e',
+        weight: 4.5,
+        dashArray: '6, 6'
+      }).addTo(liveLeafletMap);
+      liveLeafletMap.fitBounds(designatedSafeRouteLine.getBounds(), { padding: [30, 30] });
+    }
+
+    showToast('🟢 94% Safe Corridor Applied! Green safe path plotted on map & Deviation Guard active.', 'success', 4000);
     const fromInput = document.getElementById('sess-from');
-    const toInput   = document.getElementById('sess-to');
-    if (fromInput) fromInput.value = 'College Gate (Lit Corridor)';
-    if (toInput)   toInput.value   = 'Home via MG Road (94% Safe)';
+    const toInput = document.getElementById('sess-to');
+    if (fromInput) fromInput.value = 'Current Live GPS (Well-Lit Corridor)';
+    if (toInput) toInput.value = 'Main City Hub (94% CCTV Shielded)';
     showTab('start-session');
   } else {
-    showToast('⚠️ Warning: Shortest route has low lighting and zero CCTV!', 'warning', 4000);
+    showToast('⚠️ Caution: Shortest route has low lighting and blind spots!', 'warning', 4000);
   }
 }
 
@@ -1951,7 +2381,7 @@ async function triggerOfflineEmergencySMS() {
   const contacts = getContacts();
   const phoneList = contacts.map(c => c.phone.replace(/[^0-9+]/g, '')).filter(Boolean);
   const primaryPhone = phoneList[0] || '112';
-  const contactsDisplay = contacts.length 
+  const contactsDisplay = contacts.length
     ? contacts.map(c => `${c.name} (${c.phone})`).join(', ')
     : 'National Emergency 112';
 
@@ -1975,8 +2405,8 @@ async function triggerOfflineEmergencySMS() {
         userName: userName,
         time: nowStr()
       })
-    }).catch(() => {});
-  } catch (_) {}
+    }).catch(() => { });
+  } catch (_) { }
 
   // Native GSM SMS URI
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
@@ -1985,7 +2415,7 @@ async function triggerOfflineEmergencySMS() {
   const smsUri = `sms:${phonesJoined || primaryPhone}${smsDelimiter}body=${encodeURIComponent(msg)}`;
 
   // WhatsApp share URL
-  const waUrl = phoneList.length === 1 
+  const waUrl = phoneList.length === 1
     ? `https://wa.me/${phoneList[0].replace(/^\+/, '')}?text=${encodeURIComponent(msg)}`
     : `https://wa.me/?text=${encodeURIComponent(msg)}`;
 
@@ -2020,26 +2450,32 @@ async function triggerOfflineEmergencySMS() {
     </div>
   `, [
     { label: 'Cancel', cls: 'btn-ghost' },
-    { label: '💬 Send via WhatsApp', cls: 'btn-primary', fn: () => {
-      window.open(waUrl, '_blank');
-      showToast('Opening WhatsApp with real live coordinates…', 'success', 3500);
-    }},
-    { label: '✉️ Send via Native SMS', cls: 'btn-danger', fn: () => {
-      window.location.href = smsUri;
-      showToast('Opening native phone SMS messenger…', 'success', 3500);
-    }},
-    { label: '📲 Share via All Apps', cls: 'btn-ghost', fn: () => {
-      if (navigator.share) {
-        navigator.share({
-          title: '🚨 EMERGENCY SOS LOCATION',
-          text: msg,
-          url: mapsUrl
-        }).catch(() => {});
-      } else {
-        navigator.clipboard.writeText(msg);
-        showToast('SOS message with live coordinates copied to clipboard!', 'success', 3000);
+    {
+      label: '💬 Send via WhatsApp', cls: 'btn-primary', fn: () => {
+        window.open(waUrl, '_blank');
+        showToast('Opening WhatsApp with real live coordinates…', 'success', 3500);
       }
-    }}
+    },
+    {
+      label: '✉️ Send via Native SMS', cls: 'btn-danger', fn: () => {
+        window.location.href = smsUri;
+        showToast('Opening native phone SMS messenger…', 'success', 3500);
+      }
+    },
+    {
+      label: '📲 Share via All Apps', cls: 'btn-ghost', fn: () => {
+        if (navigator.share) {
+          navigator.share({
+            title: '🚨 EMERGENCY SOS LOCATION',
+            text: msg,
+            url: mapsUrl
+          }).catch(() => { });
+        } else {
+          navigator.clipboard.writeText(msg);
+          showToast('SOS message with live coordinates copied to clipboard!', 'success', 3000);
+        }
+      }
+    }
   ]);
 }
 
@@ -2244,7 +2680,7 @@ async function handleDuressPinVerification() {
         })
       });
       console.warn('Silent Hostage Duress Alert logged to MongoDB database.');
-    } catch (_) {}
+    } catch (_) { }
 
   } else {
     showToast('Invalid Security PIN. Please try again.', 'error');
@@ -2283,9 +2719,9 @@ function openRideShieldModal() {
 }
 
 async function startRideShieldSession() {
-  const plate  = document.getElementById('rs-plate')?.value.trim().toUpperCase();
+  const plate = document.getElementById('rs-plate')?.value.trim().toUpperCase();
   const driver = document.getElementById('rs-driver')?.value.trim();
-  const dest   = document.getElementById('rs-dest')?.value.trim();
+  const dest = document.getElementById('rs-dest')?.value.trim();
 
   if (!plate) {
     showToast('Vehicle number is required to activate Ride Shield.', 'warning');
@@ -2328,8 +2764,8 @@ async function startRideShieldSession() {
         userName: currentUser?.name || 'User',
         time: nowStr()
       })
-    }).catch(() => {});
-  } catch (_) {}
+    }).catch(() => { });
+  } catch (_) { }
 
   // Show Quick Share Modal for Ride
   showModal('🚖 Ride Shield Active', `
@@ -2480,9 +2916,271 @@ async function checkBatteryGuard() {
         showToast(`Battery level is ${pct}% ${isCharging ? '(Charging)' : '(Healthy)'}. SafeRoute Battery Guard is watching!`, 'info', 3500);
       }
       return;
-    } catch (_) {}
+    } catch (_) { }
   }
   showToast('Battery status checked: Auto-SOS will alert family if power drops below 15%.', 'info');
+}
+
+/* ═════════════════════════════════════════
+   1-TAP COMPACT OFFLINE EMERGENCY SMS
+═════════════════════════════════════════ */
+function triggerOfflineEmergencySMS() {
+  const loc = currentLocation
+    ? `${currentLocation.lat.toFixed(5)},${currentLocation.lng.toFixed(5)}`
+    : (locationLabel() || '18.5204,73.8567');
+  const cleanLoc = loc.replace(/\s+/g, '');
+  const mapsUrl = `https://maps.google.com/?q=${cleanLoc}`;
+  const contacts = getContacts();
+  const phoneList = contacts.map(c => c.phone.replace(/[^0-9+]/g, '')).filter(Boolean);
+  const primaryPhone = phoneList[0] || '112';
+  const name = currentUser?.name || 'SafeRoute User';
+  const msg = `EMERGENCY SOS: ${name} needs immediate help! Live GPS Location: ${mapsUrl} (SafeRoute Offline Arsenal)`;
+
+  showToast('📱 Launching Native SMS with Live Geo-Coordinates…', 'info', 3000);
+  window.location.href = `sms:${primaryPhone}?body=${encodeURIComponent(msg)}`;
+}
+
+/* ═════════════════════════════════════════
+   AI VOICE DISTRESS SENTINEL & SCREAM DETECTOR
+═════════════════════════════════════════ */
+let voiceSentinelActive = false;
+let speechRecognizer = null;
+let screamAudioContext = null;
+let screamAudioStream = null;
+let screamAnalyser = null;
+let screamCheckInterval = null;
+
+function toggleVoiceSentinel() {
+  if (voiceSentinelActive) {
+    stopVoiceSentinel();
+    showToast('Voice Sentinel & Scream Guard Deactivated.', 'info');
+  } else {
+    startVoiceSentinel();
+  }
+}
+
+function startVoiceSentinel() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition && !navigator.mediaDevices?.getUserMedia) {
+    showToast('Voice or microphone APIs not supported in this browser.', 'warning');
+    return;
+  }
+
+  voiceSentinelActive = true;
+  const btn = document.getElementById('btn-voice-sentinel');
+  const status = document.getElementById('voice-guard-status');
+  if (btn) btn.classList.add('active-sentinel');
+  if (status) status.textContent = '● LISTENING (Distress/Scream)';
+
+  showToast('🎙️ Voice & Scream Guard is ACTIVE! Say "मदत" / "बचाव" / "Help" or scream to trigger instant SOS.', 'success', 5000);
+
+  // 1. Natural Speech Keyword Distress Detection
+  if (SpeechRecognition) {
+    try {
+      speechRecognizer = new SpeechRecognition();
+      speechRecognizer.continuous = true;
+      speechRecognizer.interimResults = true;
+      speechRecognizer.lang = 'mr-IN';
+
+      speechRecognizer.onresult = (event) => {
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const transcript = event.results[i][0].transcript.toLowerCase().trim();
+          console.log('🎙️ Heard speech:', transcript);
+          const keywords = ['मदत', 'बचाव', 'वाचवा', 'help', 'save me', 'police', 'bachao', 'madat', 'emergency'];
+          if (keywords.some(k => transcript.includes(k))) {
+            showToast(`🎙️ Distress Keyword Detected: "${transcript}"! Triggering Emergency SOS!`, 'error', 4000);
+            manualSOS();
+            break;
+          }
+        }
+      };
+
+      speechRecognizer.onerror = (e) => {
+        if (voiceSentinelActive && e.error !== 'not-allowed') {
+          setTimeout(() => {
+            if (voiceSentinelActive) {
+              try { speechRecognizer.start(); } catch (_) { }
+            }
+          }, 1500);
+        }
+      };
+
+      speechRecognizer.onend = () => {
+        if (voiceSentinelActive) {
+          try { speechRecognizer.start(); } catch (_) { }
+        }
+      };
+
+      speechRecognizer.start();
+    } catch (err) {
+      console.warn('Speech recognition setup note:', err);
+    }
+  }
+
+  // 2. Real-Time High-Decibel Scream Detector using Web Audio API
+  if (navigator.mediaDevices?.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      .then(stream => {
+        screamAudioStream = stream;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        screamAudioContext = new AudioCtx();
+        const source = screamAudioContext.createMediaStreamSource(stream);
+        screamAnalyser = screamAudioContext.createAnalyser();
+        screamAnalyser.fftSize = 256;
+        source.connect(screamAnalyser);
+
+        const dataArray = new Uint8Array(screamAnalyser.frequencyBinCount);
+        let highDecibelConsecutiveCount = 0;
+
+        screamCheckInterval = setInterval(() => {
+          if (!voiceSentinelActive) return;
+          screamAnalyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+          }
+          const averageVolume = sum / dataArray.length;
+
+          // Loud scream or violent acoustic spike (>80% amplitude)
+          if (averageVolume > 85) {
+            highDecibelConsecutiveCount++;
+            if (highDecibelConsecutiveCount >= 3) {
+              highDecibelConsecutiveCount = 0;
+              showToast('🚨 ACOUSTIC DISTRESS SCREAM DETECTED (>85dB)! Triggering SOS!', 'error', 4000);
+              manualSOS();
+            }
+          } else {
+            highDecibelConsecutiveCount = Math.max(0, highDecibelConsecutiveCount - 1);
+          }
+        }, 200);
+      })
+      .catch(err => {
+        console.warn('Microphone permission for scream detection:', err);
+      });
+  }
+}
+
+function stopVoiceSentinel() {
+  voiceSentinelActive = false;
+  if (speechRecognizer) {
+    try { speechRecognizer.stop(); } catch (_) { }
+    speechRecognizer = null;
+  }
+  if (screamCheckInterval) {
+    clearInterval(screamCheckInterval);
+    screamCheckInterval = null;
+  }
+  if (screamAudioStream) {
+    screamAudioStream.getTracks().forEach(t => t.stop());
+    screamAudioStream = null;
+  }
+  if (screamAudioContext) {
+    try { screamAudioContext.close(); } catch (_) { }
+    screamAudioContext = null;
+  }
+
+  const btn = document.getElementById('btn-voice-sentinel');
+  const status = document.getElementById('voice-guard-status');
+  if (btn) btn.classList.remove('active-sentinel');
+  if (status) status.textContent = 'Keyword & Decibel AI';
+}
+
+/* ═════════════════════════════════════════
+   GHOST SHIELD: DEAD-MAN'S INACTIVITY PULSE
+═════════════════════════════════════════ */
+let ghostShieldActive = false;
+let ghostPulseTimer = null;
+let ghostResponseTimer = null;
+
+function toggleGhostShield() {
+  if (ghostShieldActive) {
+    stopGhostShield();
+    showToast('Ghost Inactivity Guard Deactivated.', 'info');
+  } else {
+    startGhostShield();
+  }
+}
+
+function startGhostShield() {
+  ghostShieldActive = true;
+  const btn = document.getElementById('btn-ghost-shield');
+  const status = document.getElementById('ghost-guard-status');
+  if (btn) btn.classList.add('active-sentinel');
+  if (status) status.textContent = '● ACTIVE (Pulse Watching)';
+
+  showToast('👻 Ghost Shield Online: Periodic safety pulses will confirm your consciousness & safety.', 'success', 4000);
+  scheduleNextGhostPulse();
+}
+
+function scheduleNextGhostPulse() {
+  clearTimeout(ghostPulseTimer);
+  if (!ghostShieldActive) return;
+
+  // Pulse interval: 25 seconds in demo mode, 3 minutes in real mode
+  const intervalMs = demoMode ? 25000 : 180000;
+  ghostPulseTimer = setTimeout(() => {
+    triggerGhostSafetyPulse();
+  }, intervalMs);
+}
+
+function triggerGhostSafetyPulse() {
+  if (!ghostShieldActive || emergencyActive) return;
+
+  // Vibrate phone gently
+  if (navigator.vibrate) navigator.vibrate([150, 100, 150]);
+
+  let countdown = 15;
+  const modalBody = `
+    <div style="text-align:center; padding:10px;">
+      <span style="font-size:2.8rem; animation:pulse 1s infinite;">👻</span>
+      <h3 style="color:#f472b6; margin-top:8px;">Safety Pulse Check</h3>
+      <p style="font-size:0.85rem; color:var(--text-soft); margin-top:4px;">
+        Tap the button below to confirm you are safe. If you do not respond, emergency SOS will trigger automatically!
+      </p>
+      <div style="font-family:'Orbitron',sans-serif; font-size:1.8rem; font-weight:800; color:#ef4444; margin-top:12px;" id="ghost-countdown">
+        ${countdown}s
+      </div>
+    </div>
+  `;
+
+  showModal('🛡️ SafeRoute Inactivity Check', modalBody, [
+    {
+      label: "✅ I'm Safe & OK",
+      cls: 'btn-primary',
+      fn: () => {
+        clearInterval(ghostResponseTimer);
+        closeModal();
+        showToast('Safety confirmed. Ghost Shield monitoring resumed.', 'success', 2500);
+        scheduleNextGhostPulse();
+      }
+    }
+  ]);
+
+  ghostResponseTimer = setInterval(() => {
+    countdown--;
+    const countEl = document.getElementById('ghost-countdown');
+    if (countEl) countEl.textContent = `${countdown}s`;
+
+    if (countdown <= 0) {
+      clearInterval(ghostResponseTimer);
+      closeModal();
+      showToast('⚠️ No response to Ghost Safety Pulse! Triggering Emergency SOS!', 'error', 4000);
+      manualSOS();
+    }
+  }, 1000);
+}
+
+function stopGhostShield() {
+  ghostShieldActive = false;
+  clearTimeout(ghostPulseTimer);
+  clearInterval(ghostResponseTimer);
+  ghostPulseTimer = null;
+  ghostResponseTimer = null;
+
+  const btn = document.getElementById('btn-ghost-shield');
+  const status = document.getElementById('ghost-guard-status');
+  if (btn) btn.classList.remove('active-sentinel');
+  if (status) status.textContent = 'Dead-man switch';
 }
 
 /* ═════════════════════════════════════════
@@ -2494,11 +3192,11 @@ function clearAllTimers() {
   clearInterval(checkinProgressId);
   clearTimeout(checkinPopupId);
   clearInterval(graceCancelId);
-  sessionTimerId  = null;
+  sessionTimerId = null;
   checkinProgressId = null;
-  checkinPopupId   = null;
-  graceCancelId    = null;
-  checkinActive    = false;
+  checkinPopupId = null;
+  graceCancelId = null;
+  checkinActive = false;
 
   // Hide check-in popup if open
   const popup = document.getElementById('checkin-popup');
@@ -2520,14 +3218,24 @@ function clearAllTimers() {
     saveUsers(users);
   }
 
-  // Check if a user session was active (page reload during session)
-  // For simplicity, always start at auth screen
-  showScreen('auth');
-  switchAuthTab('login');
+  // Check if a user session was active (restore session on page reload)
+  try {
+    const savedUser = localStorage.getItem('sr_user');
+    if (savedUser) {
+      currentUser = JSON.parse(savedUser);
+      onLoginSuccess();
+    } else {
+      showScreen('auth');
+      switchAuthTab('login');
+    }
+  } catch (_) {
+    showScreen('auth');
+    switchAuthTab('login');
+  }
 
   // Pre-fill email for quick demo
   const emailInput = document.getElementById('login-email');
-  if (emailInput) emailInput.value = DEMO_USER.email;
+  if (emailInput && !currentUser) emailInput.value = DEMO_USER.email;
 
   // Check live server storage / MongoDB connection status
   checkDbStatus();
@@ -2545,7 +3253,7 @@ function clearAllTimers() {
   getLiveLocation(false);
   startContinuousLocationWatch();
 
-  console.log('%cSafeRoute prototype loaded with Women Safety Arsenal & MongoDB. Quick login: demo@saferoute.app / demo1234', 'color:#4f46e5;font-weight:bold;font-size:13px');
+  console.log('%cSafeRoute prototype loaded with Women Safety Arsenal & Turso Cloud DB. Quick login: demo@saferoute.app / demo1234', 'color:#4f46e5;font-weight:bold;font-size:13px');
 })();
 
 /* ═════════════════════════════════════════

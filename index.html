@@ -8,6 +8,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <!-- Leaflet Interactive Maps -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Socket.io Client -->
+  <script src="/socket.io/socket.io.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -346,8 +351,8 @@
               </label>
             </div>
 
-            <!-- Laptop Shortcuts Widget (Visible on Laptop / Desktop) -->
-            <div class="desktop-shortcuts-card">
+            <!-- Laptop Shortcuts Widget (Visible on Laptop / Desktop Only) -->
+            <div class="desktop-shortcuts-card desktop-only">
               <div class="dsc-title">⌨️ Laptop Quick Keys</div>
               <div class="dsc-item"><kbd>Shift + S</kbd> <span>Instant SOS Alert</span></div>
               <div class="dsc-item"><kbd>Esc</kbd> <span>Close Any Modal</span></div>
@@ -361,7 +366,7 @@
             <div class="safety-arsenal-box">
               <div class="arsenal-header">
                 <span class="arsenal-badge">🛡️ Women Safety Arsenal</span>
-                <small class="arsenal-sub">6 Pro-Defense Tools</small>
+                <small class="arsenal-sub">10 Pro-Defense Tools</small>
               </div>
               <div class="arsenal-grid">
                 <button class="arsenal-btn fc-btn-theme" onclick="openFakeCallMenu()">
@@ -403,6 +408,16 @@
                 <button class="arsenal-btn battery-btn-theme" style="flex:1; padding:8px 10px;" onclick="checkBatteryGuard()">
                   <strong style="font-size:0.75rem;">🔋 Battery Guard</strong>
                   <small style="font-size:0.65rem;" id="battery-status-hint">Auto pre-alert on &lt;15%</small>
+                </button>
+              </div>
+              <div style="display:flex; gap:8px; margin-top:8px;">
+                <button class="arsenal-btn voice-btn-theme" style="flex:1; padding:8px 10px;" id="btn-voice-sentinel" onclick="toggleVoiceSentinel()">
+                  <strong style="font-size:0.75rem;" id="voice-guard-title">🎙️ Voice &amp; Scream AI</strong>
+                  <small style="font-size:0.65rem;" id="voice-guard-status">Keyword &amp; Decibel AI</small>
+                </button>
+                <button class="arsenal-btn ghost-btn-theme" style="flex:1; padding:8px 10px;" id="btn-ghost-shield" onclick="toggleGhostShield()">
+                  <strong style="font-size:0.75rem;" id="ghost-guard-title">👻 Ghost Inactivity Pulse</strong>
+                  <small style="font-size:0.65rem;" id="ghost-guard-status">Dead-man check-in</small>
                 </button>
               </div>
             </div>
@@ -479,7 +494,17 @@
           <span>Nearby</span>
         </button>
         <button class="nav-btn" id="nav-history" onclick="showTab('history')" aria-label="History">
-          <svg width="22" height="22" viewBox="0 0 24     <!-- ── TAB: CONTACTS ── -->
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>History</span>
+        </button>
+        <button class="nav-btn" id="nav-privacy" onclick="showTab('privacy')" aria-label="Privacy">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          <span>Privacy</span>
+        </button>
+      </nav>
+    </section>
+
+    <!-- ── TAB: CONTACTS ── -->
     <section id="screen-contacts" class="screen hidden">
       <header class="app-header">
         <div class="header-brand">
@@ -828,9 +853,13 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 00-8 8c0 5.4 8 13 8 13s8-7.6 8-13a8 8 0 00-8-8z"/></svg>
                 Current Location &amp; Route Telemetry
               </div>
-              <div class="mock-map" id="mock-map">
-                <div class="map-pin-label" id="map-coords">Acquiring location…</div>
-                <div class="map-dot pulse-dot"></div>
+              <div class="live-map-wrapper" id="live-map-wrapper" style="position:relative; width:100%; height:230px; border-radius:10px; overflow:hidden; border:1px solid rgba(168,85,247,0.3); margin-bottom:8px;">
+                <div id="live-map" style="width:100%; height:100%;"></div>
+                <div class="map-hud-pill">
+                  <span class="live-hud-dot"></span>
+                  <span id="map-coords" style="font-family:'Share Tech Mono',monospace; font-size:0.75rem;">Acquiring live GPS…</span>
+                  <button type="button" class="btn-map-recenter" onclick="recenterLiveMap()" title="Center Map">📍</button>
+                </div>
               </div>
               <div class="map-route">
                 <span id="map-from">–</span>
@@ -925,11 +954,24 @@
           <video id="camera-live-video" class="camera-live-video" autoplay playsinline muted></video>
         </div>
 
-        <!-- Location display -->
+        <!-- Location display & Guardian Live Share Link -->
         <div class="em-location-card hidden" id="em-location-card">
-          <p class="em-location-label">📍 Location Shared</p>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <p class="em-location-label" style="margin:0;">📍 Live GPS Dispatched</p>
+            <span style="background:rgba(16,185,129,0.2); color:#4ade80; border:1px solid rgba(16,185,129,0.4); font-size:0.7rem; font-weight:700; padding:2px 6px; border-radius:10px;">Socket.io LIVE</span>
+          </div>
           <p id="em-location-coords" class="em-location-coords"></p>
-          <p class="em-demo-label">Demo – no real message sent</p>
+          
+          <!-- Real Guardian Live Tracking Link Card -->
+          <div class="guardian-link-card" id="guardian-link-card" style="margin-top:10px; background:rgba(22,10,48,0.85); border:1px solid rgba(168,85,247,0.4); border-radius:8px; padding:10px;">
+            <div style="font-size:0.75rem; color:#f472b6; font-weight:700; margin-bottom:4px;">🔗 Family & Guardian Live Tracking Link:</div>
+            <div id="guardian-tracking-url" style="font-family:'Share Tech Mono',monospace; font-size:0.75rem; color:#fff; word-break:break-all; background:rgba(0,0,0,0.4); padding:6px; border-radius:4px; margin-bottom:8px;">Generating secure link…</div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button type="button" class="btn btn-ghost" style="padding:5px 8px; font-size:0.72rem; flex:1;" onclick="copyGuardianLink()">📋 Copy URL</button>
+              <button type="button" class="btn btn-primary" style="padding:5px 8px; font-size:0.72rem; flex:1;" onclick="shareGuardianLinkWA()">💬 WhatsApp</button>
+              <button type="button" class="btn btn-danger" style="padding:5px 8px; font-size:0.72rem; flex:1;" onclick="shareGuardianLinkSMS()">✉️ Native SMS</button>
+            </div>
+          </div>
         </div>
 
         <!-- Contact notification preview -->

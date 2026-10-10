@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>SafeRoute Guardian Live Tracking Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <!-- Leaflet Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Socket.io -->
+  <script src="/socket.io/socket.io.js"></script>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body {
+      background: #090214;
+      color: #f8fafc;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .track-wrapper {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .track-header {
+      background: rgba(22, 10, 48, 0.95);
+      border: 1px solid rgba(168, 85, 247, 0.35);
+      border-radius: 14px;
+      padding: 16px 20px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 25px rgba(168, 85, 247, 0.15);
+    }
+    .track-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: #f472b6;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .status-badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      background: #ef4444;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+      70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+      100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+    .track-grid {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 16px;
+    }
+    @media (max-width: 768px) {
+      .track-grid { grid-template-columns: 1fr; }
+    }
+    .map-box {
+      background: rgba(22, 10, 48, 0.85);
+      border: 1px solid rgba(168, 85, 247, 0.35);
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 480px;
+    }
+    #guardian-map {
+      flex: 1;
+      width: 100%;
+    }
+    .map-footer {
+      background: rgba(15, 6, 30, 0.9);
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.8rem;
+      border-top: 1px solid rgba(168, 85, 247, 0.2);
+    }
+    .info-col {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .card-glass {
+      background: rgba(22, 10, 48, 0.85);
+      border: 1px solid rgba(168, 85, 247, 0.35);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .card-glass h3 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.85rem;
+      margin-top: 0;
+      margin-bottom: 10px;
+      color: #cbd5e1;
+      border-bottom: 1px solid rgba(168, 85, 247, 0.2);
+      padding-bottom: 6px;
+    }
+    .data-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      margin-bottom: 8px;
+    }
+    .data-row span { color: #94a3b8; }
+    .data-row strong { color: #f8fafc; font-weight: 600; }
+    .btn-action-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .evidence-thumb {
+      width: 100%;
+      max-height: 140px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="track-wrapper">
+    <!-- Header -->
+    <header class="track-header">
+      <div class="track-title">
+        <span>🛡️ SafeRoute</span>
+        <small style="font-size:0.75rem; color:#a855f7; font-weight:600;">Guardian Real-Time Console</small>
+      </div>
+      <div class="status-badge" id="badge-status">
+        <span class="pulse-dot"></span>
+        <span id="badge-text">EMERGENCY ACTIVE</span>
+      </div>
+    </header>
+
+    <div class="track-grid">
+      <!-- Left: Interactive Leaflet Map -->
+      <div class="map-box">
+        <div id="guardian-map"></div>
+        <div class="map-footer">
+          <span id="live-coords">📍 Acquiring target coordinates…</span>
+          <span id="live-acc" style="color:#4ade80;">🛰️ ±15m Lock</span>
+        </div>
+      </div>
+
+      <!-- Right: Telemetry & Actions -->
+      <div class="info-col">
+        <!-- Victim Profile -->
+        <div class="card-glass">
+          <h3>Victim & Alert Status</h3>
+          <div class="data-row"><span>User:</span> <strong id="val-user">Loading…</strong></div>
+          <div class="data-row"><span>Alert ID:</span> <strong id="val-id">–</strong></div>
+          <div class="data-row"><span>Trigger:</span> <strong id="val-type">Manual SOS</strong></div>
+          <div class="data-row"><span>Triggered:</span> <strong id="val-time">–</strong></div>
+          <div class="data-row"><span>Reason:</span> <strong id="val-reason" style="color:#f472b6;">–</strong></div>
+        </div>
+
+        <!-- Evidence Vault -->
+        <div class="card-glass" id="card-evidence">
+          <h3>📸 Captured Evidence Vault</h3>
+          <div id="evidence-container">
+            <p style="font-size:0.75rem; color:#94a3b8; margin:0;">Awaiting media sync from device camera…</p>
+          </div>
+        </div>
+
+        <!-- Immediate Actions -->
+        <div class="card-glass">
+          <h3>Dispatch Emergency Help</h3>
+          <div class="btn-action-group">
+            <button class="btn btn-danger btn-full" onclick="window.location.href='tel:112'">
+              🚨 Call Police / 112
+            </button>
+            <button class="btn btn-primary btn-full" onclick="window.location.href='tel:1091'">
+              📞 Women Helpline (1091)
+            </button>
+            <button class="btn btn-ghost btn-full" id="btn-gmaps" onclick="openDirections()">
+              🗺️ Navigate to Victim on Google Maps
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    'use strict';
+    const params = new URLSearchParams(window.location.search);
+    const alertId = params.get('id') || 'SR1001';
+
+    let map = null;
+    let victimMarker = null;
+    let accuracyCircle = null;
+    let pathLine = null;
+    let pathCoordinates = [];
+    let currentCoords = null;
+    let socket = null;
+
+    // Initialize Leaflet Map
+    function initMap() {
+      map = L.map('guardian-map', {
+        zoomControl: true,
+        attributionControl: false
+      }).setView([18.5204, 73.8567], 15);
+
+      // CartoDB Dark Matter Tiles (stunning cyber dark aesthetic)
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19
+      }).addTo(map);
+
+      // Create custom pulsing icon
+      const victimIcon = L.divIcon({
+        className: 'custom-guardian-pin',
+        html: `
+          <div style="position:relative; width:28px; height:28px;">
+            <div style="position:absolute; width:28px; height:28px; background:rgba(239,68,68,0.4); border-radius:50%; animation:pulse 1.5s infinite;"></div>
+            <div style="position:absolute; top:4px; left:4px; width:20px; height:20px; background:#ef4444; border:2px solid #fff; border-radius:50%; box-shadow:0 0 10px #ef4444; display:flex; align-items:center; justify-content:center; font-size:10px;">🆘</div>
+          </div>
+        `,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+
+      victimMarker = L.marker([18.5204, 73.8567], { icon: victimIcon }).addTo(map);
+      victimMarker.bindPopup('<strong style="color:#000;">Victim Current Location</strong>');
+
+      accuracyCircle = L.circle([18.5204, 73.8567], {
+        radius: 20,
+        color: '#f43f5e',
+        fillColor: '#f43f5e',
+        fillOpacity: 0.15,
+        weight: 1.5
+      }).addTo(map);
+
+      pathLine = L.polyline([], {
+        color: '#a855f7',
+        weight: 3,
+        dashArray: '5, 8'
+      }).addTo(map);
+    }
+
+    // Update Victim Position on Map
+    function updateVictimPosition(lat, lng, accuracy = 15, label = '') {
+      if (!lat || !lng) return;
+      currentCoords = { lat, lng };
+
+      const latLng = [lat, lng];
+      victimMarker.setLatLng(latLng);
+      accuracyCircle.setLatLng(latLng);
+      accuracyCircle.setRadius(accuracy || 15);
+
+      pathCoordinates.push(latLng);
+      pathLine.setLatLngs(pathCoordinates);
+      map.setView(latLng, 16);
+
+      document.getElementById('live-coords').textContent = `📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      document.getElementById('live-acc').textContent = `🛰️ ±${Math.round(accuracy)}m Live Lock`;
+    }
+
+    function openDirections() {
+      if (currentCoords) {
+        window.open(`https://www.google.com/maps/dir/?api=1&destination=${currentCoords.lat},${currentCoords.lng}`, '_blank');
+      } else {
+        alert('Coordinates are still synchronizing.');
+      }
+    }
+
+    // Fetch Alert Meta from Backend
+    async function loadAlertData() {
+      try {
+        const res = await fetch('/api/alerts');
+        const data = await res.json();
+        if (data.success && data.alerts) {
+          const matched = data.alerts.find(a => a.alertId === alertId) || data.alerts[0];
+          if (matched) {
+            document.getElementById('val-id').textContent = matched.alertId;
+            document.getElementById('val-user').textContent = matched.userName || 'SafeRoute User';
+            document.getElementById('val-type').textContent = matched.type || 'Manual SOS';
+            document.getElementById('val-time').textContent = matched.time || 'Just now';
+            document.getElementById('val-reason').textContent = matched.reason || 'Emergency Assistance Requested';
+
+            if (matched.status === 'Resolved' || matched.status === 'Cancelled') {
+              const badge = document.getElementById('badge-status');
+              badge.style.background = 'rgba(16,185,129,0.2)';
+              badge.style.color = '#4ade80';
+              badge.style.borderColor = 'rgba(16,185,129,0.4)';
+              badge.querySelector('.pulse-dot').style.background = '#4ade80';
+              document.getElementById('badge-text').textContent = 'RESOLVED / SAFE';
+            }
+
+            // Extract lat/lng if recorded in string
+            if (matched.location) {
+              const match = matched.location.match(/([0-9]+\.[0-9]+),\s*([0-9]+\.[0-9]+)/);
+              if (match) {
+                updateVictimPosition(parseFloat(match[1]), parseFloat(match[2]), 20);
+              }
+            }
+
+            // Evidence photos/videos
+            if (matched.evidence && matched.evidence.length > 0) {
+              const box = document.getElementById('evidence-container');
+              box.innerHTML = matched.evidence.map(e => {
+                if (e.mediaType === 'video') {
+                  return `<video src="${e.fileUrl || e.url}" controls class="evidence-thumb"></video>`;
+                } else {
+                  return `<img src="${e.fileUrl || e.url}" alt="Evidence" class="evidence-thumb" onclick="window.open(this.src,'_blank')" />`;
+                }
+              }).join('');
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Error fetching alert data:', err);
+      }
+    }
+
+    // Initialize Socket.io Connection
+    function initSocket() {
+      try {
+        if (typeof io !== 'undefined') {
+          socket = io();
+          socket.emit('join-alert', alertId);
+
+          socket.on('guardian-location', (data) => {
+            if (data && data.lat && data.lng) {
+              updateVictimPosition(data.lat, data.lng, data.accuracy || 15);
+            }
+          });
+
+          socket.on('new-emergency-alert', (alert) => {
+            if (alert.alertId === alertId) {
+              loadAlertData();
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Socket connection note:', e);
+      }
+    }
+
+    // Initialize Page
+    document.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      loadAlertData();
+      initSocket();
+
+      // Fallback polling every 5 seconds
+      setInterval(loadAlertData, 5000);
+    });
+  </script>
+</body>
+</html>
